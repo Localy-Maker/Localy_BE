@@ -10,13 +10,7 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 @ConfigurationProperties(prefix = "app")
 public class AppProperties {
-  private Jwt jwt = new Jwt();
   private S3 s3 = new S3();
-
-  @Getter @Setter
-  public static class Jwt {
-    private long presenterTtlHours = 2;
-  }
 
   @Getter @Setter
   public static class S3 {
