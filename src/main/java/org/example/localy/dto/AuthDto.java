@@ -147,4 +147,49 @@ public class AuthDto {
         @Schema(description = "메시지")
         private String message;
     }
+
+    // 비밀번호 재설정
+    @Getter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    @Schema(description = "비밀번호 재설정 요청")
+    public static class PasswordResetRequest {
+        @NotBlank(message = "이메일을 입력해주세요.")
+        @Email(message = "올바른 이메일 형식이 아닙니다.")
+        @Schema(description = "이메일")
+        private String email;
+
+        @NotBlank(message = "인증번호를 입력해주세요.")
+        @Size(min = 6, max = 6, message = "인증번호는 6자리입니다.")
+        @Schema(description = "인증번호 (6자리)")
+        private String code;
+
+        @NotBlank(message = "새 비밀번호를 입력해주세요.")
+        @Pattern(
+                regexp = "^(?=.*[a-z])(?=.*[!#$%&*@^])[a-z!#$%&*@^0-9]{8,16}$",
+                message = "영문 소문자 8~16자, 특수문자(!#$%&*@^) 포함 필수"
+        )
+        @Schema(description = "새 비밀번호 (영문 소문자 8~16자, 특수문자 !#$%&*@^ 포함)")
+        private String newPassword;
+
+        @NotBlank(message = "비밀번호 확인을 입력해주세요.")
+        @Schema(description = "새 비밀번호 재입력")
+        private String newPasswordConfirm;
+    }
+
+    // 비밀번호 재설정 응답
+    @Getter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    @Schema(description = "비밀번호 재설정 응답")
+    public static class PasswordResetResponse {
+        @Schema(description = "성공 여부")
+        private boolean success;
+
+        @Schema(description = "메시지")
+        private String message;
+    }
+
 }

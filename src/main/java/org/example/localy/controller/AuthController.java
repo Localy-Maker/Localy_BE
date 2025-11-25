@@ -92,4 +92,13 @@ public class AuthController {
         AuthDto.LogoutResponse response = authService.logout(userId);
         return BaseResponse.success("로그아웃 완료", response);
     }
+
+    @Operation(summary = "비밀번호 재설정 (비밀번호 찾기)", description = "이메일 인증 후 비밀번호를 재설정합니다.")
+    @PostMapping("/password/reset")
+    public BaseResponse<AuthDto.PasswordResetResponse> resetPassword(
+            @Valid @RequestBody AuthDto.PasswordResetRequest request
+    ) {
+        AuthDto.PasswordResetResponse response = authService.resetPassword(request);
+        return BaseResponse.success("비밀번호 재설정 완료", response);
+    }
 }

@@ -223,4 +223,44 @@ public class AuthService {
             throw new CustomException(AuthErrorCode.LOGOUT_FAILED);
         }
     }
+
+    // 비밀번호 찾기
+    @Transactional
+    public AuthDto.PasswordResetResponse resetPassword(AuthDto.PasswordResetRequest request) {
+        try {
+            // 이메일 인증번호 확인
+            emailVerificationService.verifyCode(request.getEmail(), request.getCode());
+
+            // 사용자 조회
+            Users user = userRepository.findByEmail(request.getEmail())
+                    .orElseThrow(() -> new CustomException(AuthErrorCode.USER_NOT_FOUND));
+
+            // 소셜 로그인 사용자 체크
+            if (user.getAuthProvider() != Users.AuthProvider.LOCAL) {
+                throw new CustomException(AuthErrorCode.OAUTH_USER_EMAIL_MISMATCH);
+            }
+
+            // 새 비밀번호 확인
+            if (!request.getNewPassword().equals(request.getNewPasswordConfirm())) {
+                throw new CustomException(AuthErrorCode.PASSWORD_MISMATCH);
+            }
+
+            // 비밀번호 업데이트
+            user.updatePassword(passwordEncoder.encode(request.getNewPassword()));
+            userRepository.save(user);
+
+            log.info("비밀번호 재설정 완료: userId={}, email={}", user.getId(), user.getEmail());
+
+            return AuthDto.PasswordResetResponse.builder()
+                    .success(true)
+                    .message("비밀번호가 성공적으로 변경되었습니다.")
+                    .build();
+
+        } catch (CustomException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("비밀번호 재설정 실패: {}", e.getMessage(), e);
+            throw new CustomException(AuthErrorCode.INTERNAL_SERVER_ERROR);
+        }
+    }
 }
