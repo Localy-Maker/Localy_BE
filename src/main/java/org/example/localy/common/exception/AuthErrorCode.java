@@ -34,8 +34,9 @@ public enum AuthErrorCode implements BaseErrorCode {
     // 온보딩
     ONBOARDING_ALREADY_COMPLETED("AUTH015", "이미 온보딩을 완료한 사용자입니다.",HttpStatus.BAD_REQUEST),
     ONBOARDING_SAVE_FAILED( "AUTH016", "온보딩 정보 저장 중 오류가 발생했습니다.", HttpStatus.INTERNAL_SERVER_ERROR),
-    ONBOARDING_LOAD_FAILED( "AUTH017", "온보딩 정보 조회 중 오류가 발생했습니다.", HttpStatus.INTERNAL_SERVER_ERROR);
+    ONBOARDING_LOAD_FAILED( "AUTH017", "온보딩 정보 조회 중 오류가 발생했습니다.", HttpStatus.INTERNAL_SERVER_ERROR),
 
+    INTERNAL_SERVER_ERROR("AUTH018", "서버 내부 오류가 발생했습니다.", HttpStatus.INTERNAL_SERVER_ERROR);
     private final String code;
     private final String message;
     private final HttpStatus status;
