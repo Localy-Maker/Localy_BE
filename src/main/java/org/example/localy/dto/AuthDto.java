@@ -41,6 +41,7 @@ public class AuthDto {
         private String code;
     }
 
+    // 회원가입
     @Getter
     @NoArgsConstructor
     @AllArgsConstructor
@@ -97,6 +98,7 @@ public class AuthDto {
         private String idToken;
     }
 
+    // 이메일 인증 응답
     @Getter
     @NoArgsConstructor
     @AllArgsConstructor
