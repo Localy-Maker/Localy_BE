@@ -11,6 +11,7 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "users")
 @Getter
+@Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
@@ -51,6 +52,18 @@ public class Users {
     @LastModifiedDate
     @Column(nullable = false)
     private LocalDateTime updatedAt;
+
+    @Column(name = "display_language", length = 20)
+    private String displayLanguage; // 표시 언어 (영어, 한국어, 중국어, 일본어, 베트남어)
+
+    @Column(name = "nationality", length = 50)
+    private String nationality; // 국적
+
+    @Column(name = "interests", length = 500)
+    private String interests; // 관심사
+
+    @Column(name = "onboarding_completed")
+    private Boolean onboardingCompleted = false; // 온보딩 완료 여부
 
     public enum AuthProvider {
         LOCAL, GOOGLE
