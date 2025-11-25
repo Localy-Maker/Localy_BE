@@ -25,6 +25,7 @@ public enum AuthErrorCode implements BaseErrorCode {
     USER_NOT_FOUND("AUTH009", "존재하지 않는 사용자입니다.", HttpStatus.NOT_FOUND),
     INVALID_CREDENTIALS("AUTH010", "이메일 또는 비밀번호가 올바르지 않습니다.", HttpStatus.UNAUTHORIZED),
     OAUTH_USER_EMAIL_MISMATCH("AUTH011", "해당 이메일은 소셜 로그인으로 가입된 계정입니다.", HttpStatus.BAD_REQUEST),
+    LOGOUT_FAILED("AUTH013", "로그아웃 처리 중 오류가 발생했습니다.", HttpStatus.INTERNAL_SERVER_ERROR),
 
     // OAuth
     OAUTH_PROCESSING_FAILED("AUTH012", "소셜 로그인 처리 중 오류가 발생했습니다.", HttpStatus.INTERNAL_SERVER_ERROR),

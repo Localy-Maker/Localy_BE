@@ -13,6 +13,7 @@ import org.example.localy.entity.users.Users;
 import org.example.localy.repository.UserRepository;
 import org.example.localy.util.JwtUtil;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,10 +25,13 @@ import java.util.Collections;
 @RequiredArgsConstructor
 public class AuthService {
 
+    private static final String REFRESH_TOKEN_PREFIX = "refresh:token:";
+
     private final UserRepository userRepository;
     private final EmailVerificationService emailVerificationService;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
+    private final RedisTemplate<String, String> redisTemplate;
 
     @Value("${spring.security.oauth2.client.registration.google.client-id}")
     private String googleClientId;
@@ -186,9 +190,7 @@ public class AuthService {
         return savedUser;
     }
 
-    /**
-     * 중복되지 않는 닉네임 생성
-     */
+    //중복되지 않는 닉네임 생성
     private String generateUniqueNickname(String baseNickname) {
         String nickname = baseNickname;
         int suffix = 1;
@@ -199,5 +201,26 @@ public class AuthService {
         }
 
         return nickname;
+    }
+
+    // 로그아웃
+    @Transactional
+    public AuthDto.LogoutResponse logout(Long userId) {
+        try {
+            // Redis에서 Refresh Token 삭제
+            String redisKey = REFRESH_TOKEN_PREFIX + userId;
+            redisTemplate.delete(redisKey);
+
+            log.info("로그아웃 완료: userId={}", userId);
+
+            return AuthDto.LogoutResponse.builder()
+                    .success(true)
+                    .message("로그아웃이 완료되었습니다.")
+                    .build();
+
+        } catch (Exception e) {
+            log.error("로그아웃 처리 중 오류 발생: {}", e.getMessage(), e);
+            throw new CustomException(AuthErrorCode.LOGOUT_FAILED);
+        }
     }
 }
