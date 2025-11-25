@@ -133,4 +133,18 @@ public class AuthDto {
         @Schema(description = "메시지")
         private String message;
     }
+
+    // 로그아웃
+    @Getter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    @Schema(description = "로그아웃 응답")
+    public static class LogoutResponse {
+        @Schema(description = "로그아웃 성공 여부")
+        private boolean success;
+
+        @Schema(description = "메시지")
+        private String message;
+    }
 }

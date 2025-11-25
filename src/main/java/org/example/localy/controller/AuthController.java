@@ -8,6 +8,7 @@ import org.example.localy.common.response.BaseResponse;
 import org.example.localy.dto.AuthDto;
 import org.example.localy.service.AuthService;
 import org.example.localy.service.EmailVerificationService;
+import org.example.localy.util.JwtUtil;
 import org.springframework.web.bind.annotation.*;
 
 @Tag(name = "Auth", description = "인증 관련 API")
@@ -18,6 +19,7 @@ public class AuthController {
 
     private final AuthService authService;
     private final EmailVerificationService emailVerificationService;
+    private final JwtUtil jwtUtil;
 
     @Operation(summary = "이메일 인증번호 요청", description = "회원가입 시 이메일 인증번호를 요청합니다.")
     @PostMapping("/email/verification/send")
@@ -74,5 +76,20 @@ public class AuthController {
     ) {
         AuthDto.AuthResponse response = authService.googleLogin(request.getIdToken());
         return BaseResponse.success("Google 로그인 완료", response);
+    }
+
+    // 로그아웃
+    @Operation(summary = "로그아웃", description = "현재 로그인된 사용자를 로그아웃합니다.")
+    @PostMapping("/logout")
+    public BaseResponse<AuthDto.LogoutResponse> logout(
+            @RequestHeader("Authorization") String authorizationHeader
+    ) {
+        String token = authorizationHeader.replace("Bearer ", "");
+
+        jwtUtil.validateToken(token);
+        Long userId = jwtUtil.getUserIdFromToken(token);
+
+        AuthDto.LogoutResponse response = authService.logout(userId);
+        return BaseResponse.success("로그아웃 완료", response);
     }
 }
