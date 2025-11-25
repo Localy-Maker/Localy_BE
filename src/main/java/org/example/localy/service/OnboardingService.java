@@ -24,13 +24,14 @@ public class OnboardingService {
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
 
+
     // 온보딩 옵션
     private static final List<String> DISPLAY_LANGUAGES = Arrays.asList(
-            "영어 (English)",
-            "한국어 (Korean)",
-            "중국어 (Chinese)",
-            "일본어 (Japanese)",
-            "베트남어 (Vietnamese)"
+            "English",
+            "Korean",
+            "Chinese",
+            "Japanese",
+            "Vietnamese"
     );
 
     private static final List<String> NATIONALITIES = Arrays.asList(
@@ -55,63 +56,91 @@ public class OnboardingService {
     );
 
     /**
-     * 온보딩 옵션 조회
-     */
-    public OnboardingDto.OnboardingOptionsResponse getOnboardingOptions() {
-        log.info("온보딩 옵션 조회");
-
-        return OnboardingDto.OnboardingOptionsResponse.builder()
-                .displayLanguages(DISPLAY_LANGUAGES)
-                .nationalities(NATIONALITIES)
-                .interestOptions(INTEREST_OPTIONS)
-                .build();
-    }
-
-    /**
-     * 온보딩 정보 저장
+     * 온보딩 기본 정보 저장 (언어/국적)
      */
     @Transactional
-    public OnboardingDto.OnboardingResponse saveOnboarding(Long userId, OnboardingDto.OnboardingRequest request) {
+    public OnboardingDto.BasicInfoResponse saveBasicInfo(Long userId, OnboardingDto.BasicInfoRequest request) {
         try {
             // 사용자 조회
             Users user = userRepository.findById(userId)
                     .orElseThrow(() -> new CustomException(AuthErrorCode.USER_NOT_FOUND));
 
-            // 이미 온보딩을 완료한 사용자인지 확인
-            if (Boolean.TRUE.equals(user.getOnboardingCompleted())) {
-                log.warn("이미 온보딩을 완료한 사용자입니다: userId={}", userId);
-                throw new CustomException(AuthErrorCode.ONBOARDING_ALREADY_COMPLETED);
-            }
-
-            // 관심사 목록을 JSON 문자열로 변환
-            String interestsJson = objectMapper.writeValueAsString(request.getInterests());
-
-            // 온보딩 정보 저장
-            user.setDisplayLanguage(request.getDisplayLanguage());
+            // 기본 정보 저장
+            user.setDisplayLanguage(request.getLanguage());
             user.setNationality(request.getNationality());
-            user.setInterests(interestsJson);
-            user.setOnboardingCompleted(true);
 
-            userRepository.save(user);
+            // 명시적으로 save 호출
+            Users savedUser = userRepository.save(user);
 
-            log.info("온보딩 정보 저장 완료: userId={}", userId);
+            log.info("온보딩 기본 정보 저장 완료: userId={}, language={}, nationality={}",
+                    userId, savedUser.getDisplayLanguage(), savedUser.getNationality());
 
-            return OnboardingDto.OnboardingResponse.builder()
-                    .userId(user.getId())
-                    .displayLanguage(user.getDisplayLanguage())
-                    .nationality(user.getNationality())
-                    .interests(request.getInterests())
-                    .onboardingCompleted(user.getOnboardingCompleted())
+            return OnboardingDto.BasicInfoResponse.builder()
+                    .status(200)
+                    .message("기본 정보가 저장되었습니다")
+                    .userId(savedUser.getId())
+                    .language(savedUser.getDisplayLanguage())
+                    .nationality(savedUser.getNationality())
                     .build();
 
-        } catch (JsonProcessingException e) {
-            log.error("관심사 JSON 변환 실패: {}", e.getMessage(), e);
+        } catch (Exception e) {
+            log.error("기본 정보 저장 실패: userId={}, error={}", userId, e.getMessage(), e);
             throw new CustomException(AuthErrorCode.ONBOARDING_SAVE_FAILED);
         }
     }
 
     /**
-     * 온보딩 정보 조회
+     * 관심사 저장/수정 (온보딩 & 마이페이지 공통 사용)
+     */
+    @Transactional
+    public OnboardingDto.InterestsResponse saveInterests(Long userId, OnboardingDto.InterestsRequest request) {
+        try {
+            // 사용자 조회
+            Users user = userRepository.findById(userId)
+                    .orElseThrow(() -> new CustomException(AuthErrorCode.USER_NOT_FOUND));
+
+            // 관심사 목록을 JSON 문자열로 변환
+            String interestsJson = objectMapper.writeValueAsString(request.getInterests());
+
+            // 관심사 저장
+            user.setInterests(interestsJson);
+
+            // 온보딩 완료 처리 (아직 완료 안했다면)
+            if (!user.getOnboardingCompleted()) {
+                user.setOnboardingCompleted(true);
+                log.info("온보딩 완료 처리: userId={}", userId);
+            }
+
+            // 명시적으로 save 호출
+            Users savedUser = userRepository.save(user);
+
+            // 저장된 관심사를 다시 파싱하여 확인
+            List<String> savedInterests = objectMapper.readValue(
+                    savedUser.getInterests(),
+                    new TypeReference<List<String>>() {}
+            );
+
+            log.info("관심사 저장 완료: userId={}, interests={}, onboardingCompleted={}",
+                    userId, savedInterests, savedUser.getOnboardingCompleted());
+
+            return OnboardingDto.InterestsResponse.builder()
+                    .status(200)
+                    .message("관심사가 저장되었습니다")
+                    .userId(savedUser.getId())
+                    .interests(savedInterests)
+                    .build();
+
+        } catch (JsonProcessingException e) {
+            log.error("관심사 JSON 변환 실패: userId={}, error={}", userId, e.getMessage(), e);
+            throw new CustomException(AuthErrorCode.ONBOARDING_SAVE_FAILED);
+        } catch (Exception e) {
+            log.error("관심사 저장 실패: userId={}, error={}", userId, e.getMessage(), e);
+            throw new CustomException(AuthErrorCode.ONBOARDING_SAVE_FAILED);
+        }
+    }
+
+    /**
+     * 온보딩/마이페이지 정보 조회
      */
     @Transactional(readOnly = true)
     public OnboardingDto.OnboardingResponse getOnboardingInfo(Long userId) {
@@ -121,20 +150,26 @@ public class OnboardingService {
 
             // 관심사 JSON 문자열을 List로 변환
             List<String> interests = null;
-            if (user.getInterests() != null) {
+            if (user.getInterests() != null && !user.getInterests().isEmpty()) {
                 interests = objectMapper.readValue(user.getInterests(), new TypeReference<List<String>>() {});
             }
 
+            log.info("온보딩 정보 조회: userId={}, language={}, nationality={}, interests={}, completed={}",
+                    userId, user.getDisplayLanguage(), user.getNationality(), interests, user.getOnboardingCompleted());
+
             return OnboardingDto.OnboardingResponse.builder()
                     .userId(user.getId())
-                    .displayLanguage(user.getDisplayLanguage())
+                    .language(user.getDisplayLanguage())
                     .nationality(user.getNationality())
                     .interests(interests)
                     .onboardingCompleted(user.getOnboardingCompleted())
                     .build();
 
         } catch (JsonProcessingException e) {
-            log.error("관심사 JSON 파싱 실패: {}", e.getMessage(), e);
+            log.error("관심사 JSON 파싱 실패: userId={}, error={}", userId, e.getMessage(), e);
+            throw new CustomException(AuthErrorCode.ONBOARDING_LOAD_FAILED);
+        } catch (Exception e) {
+            log.error("온보딩 정보 조회 실패: userId={}, error={}", userId, e.getMessage(), e);
             throw new CustomException(AuthErrorCode.ONBOARDING_LOAD_FAILED);
         }
     }

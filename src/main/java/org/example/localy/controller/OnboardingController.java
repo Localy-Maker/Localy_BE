@@ -11,51 +11,60 @@ import org.example.localy.service.OnboardingService;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/onboarding")
 @RequiredArgsConstructor
-@Tag(name = "Onboarding", description = "온보딩 API")
+@Tag(name = "Onboarding", description = "온보딩 및 마이페이지 API")
 public class OnboardingController {
 
     private final OnboardingService onboardingService;
     private final JwtUtil jwtUtil;
 
-    @Operation(summary = "온보딩 옵션 조회", description = "온보딩에 필요한 선택 옵션 목록을 조회합니다.")
-    @GetMapping("/options")
-    public BaseResponse<OnboardingDto.OnboardingOptionsResponse> getOnboardingOptions() {
-        OnboardingDto.OnboardingOptionsResponse response = onboardingService.getOnboardingOptions();
-        return BaseResponse.success("온보딩 옵션 조회 성공", response);
-    }
-
-    @Operation(summary = "온보딩 정보 저장", description = "사용자의 온보딩 정보를 저장합니다.")
-    @PostMapping
-    public BaseResponse<OnboardingDto.OnboardingResponse> saveOnboarding(
+    // 언어/국적 선택
+    @Operation(summary = "언어/국적 선택", description = "온보딩 1단계 - 사용자의 표시 언어와 국적 저장")
+    @PutMapping("/users/nationality")
+    public BaseResponse<OnboardingDto.BasicInfoResponse> saveNationality(
             @RequestHeader("Authorization") String authorizationHeader,
-            @Valid @RequestBody OnboardingDto.OnboardingRequest request
+            @Valid @RequestBody OnboardingDto.BasicInfoRequest request
     ) {
-        // Bearer 토큰에서 실제 토큰 추출
         String token = authorizationHeader.replace("Bearer ", "");
-
-        // 토큰 검증 및 userId 추출
         jwtUtil.validateToken(token);
         Long userId = jwtUtil.getUserIdFromToken(token);
 
-        OnboardingDto.OnboardingResponse response = onboardingService.saveOnboarding(userId, request);
-        return BaseResponse.success("온보딩 정보 저장 성공", response);
+        OnboardingDto.BasicInfoResponse response = onboardingService.saveBasicInfo(userId, request);
+        return BaseResponse.success(response.getMessage(), response);
     }
 
-    @Operation(summary = "온보딩 정보 조회", description = "사용자의 온보딩 정보를 조회합니다.")
-    @GetMapping
-    public BaseResponse<OnboardingDto.OnboardingResponse> getOnboardingInfo(
+    // 온보딩 관심사 선택
+    @Operation(
+            summary = "관심사 선택",
+            description = "온보딩 2단계 및 마이페이지 관심사 수정"
+    )
+    @PutMapping("/users/interests")
+    public BaseResponse<OnboardingDto.InterestsResponse> saveInterests(
+            @RequestHeader("Authorization") String authorizationHeader,
+            @Valid @RequestBody OnboardingDto.InterestsRequest request
+    ) {
+        String token = authorizationHeader.replace("Bearer ", "");
+        jwtUtil.validateToken(token);
+        Long userId = jwtUtil.getUserIdFromToken(token);
+
+        OnboardingDto.InterestsResponse response = onboardingService.saveInterests(userId, request);
+        return BaseResponse.success(response.getMessage(), response);
+    }
+
+    // 마이페이지 관심사 변경
+    @Operation(
+            summary = "온보딩/마이페이지 정보 조회",
+            description = "마이페이지에서 기존 선택 정보 조회"
+    )
+    @GetMapping("/auth/interests/info")
+    public BaseResponse<OnboardingDto.OnboardingResponse> getInterestsInfo(
             @RequestHeader("Authorization") String authorizationHeader
     ) {
-        // Bearer 토큰에서 실제 토큰 추출
         String token = authorizationHeader.replace("Bearer ", "");
-
-        // 토큰 검증 및 userId 추출
         jwtUtil.validateToken(token);
         Long userId = jwtUtil.getUserIdFromToken(token);
 
         OnboardingDto.OnboardingResponse response = onboardingService.getOnboardingInfo(userId);
-        return BaseResponse.success("온보딩 정보 조회 성공", response);
+        return BaseResponse.success("정보 조회 성공", response);
     }
 }
