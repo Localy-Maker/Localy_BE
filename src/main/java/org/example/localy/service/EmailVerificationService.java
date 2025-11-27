@@ -43,9 +43,7 @@ public class EmailVerificationService {
         log.info("이메일 인증번호 전송 완료: {}", email);
     }
 
-    /**
-     * 이메일 인증번호 확인
-     */
+    // 이메일 인증번호 확인
     public void verifyCode(String email, String code) {
         String redisKey = EMAIL_VERIFICATION_PREFIX + email;
         String storedCode = redisTemplate.opsForValue().get(redisKey);
@@ -63,9 +61,7 @@ public class EmailVerificationService {
         log.info("이메일 인증 성공: {}", email);
     }
 
-    /**
-     * 6자리 랜덤 인증번호 생성
-     */
+    // 6자리 랜덤 인증번호 생성
     private String generateVerificationCode() {
         SecureRandom random = new SecureRandom();
         StringBuilder code = new StringBuilder();
@@ -75,9 +71,7 @@ public class EmailVerificationService {
         return code.toString();
     }
 
-    /**
-     * 이메일 전송
-     */
+    // 이메일 전송
     private void sendEmail(String to, String verificationCode) {
         try {
             SimpleMailMessage message = new SimpleMailMessage();
