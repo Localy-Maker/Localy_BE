@@ -1,4 +1,4 @@
-package org.example.localy.entity.users;
+package org.example.localy.entity;
 
 import jakarta.persistence.*;
 import lombok.*;

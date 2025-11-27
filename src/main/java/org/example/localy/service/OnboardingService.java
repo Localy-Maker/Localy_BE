@@ -5,7 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.example.localy.entity.users.Users;
+import org.example.localy.entity.Users;
 import org.example.localy.dto.OnboardingDto;
 import org.example.localy.common.exception.CustomException;
 import org.example.localy.common.exception.errorCode.AuthErrorCode;

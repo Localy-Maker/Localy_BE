@@ -6,6 +6,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.localy.entity.Users;
+import org.example.localy.repository.UserRepository;
 import org.example.localy.util.JwtUtil;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -23,6 +25,7 @@ import java.util.Collections;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
+    private final UserRepository userRepository;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -34,22 +37,24 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
             if (token != null && jwtUtil.validateToken(token)) {
                 Long userId = jwtUtil.getUserIdFromToken(token);
-                String email = jwtUtil.getEmailFromToken(token);
 
-                JwtAuthentication authentication = new JwtAuthentication(userId, email);
+                // Users 엔티티를 데이터베이스에서 조회
+                Users user = userRepository.findById(userId).orElse(null);
 
-                UsernamePasswordAuthenticationToken authenticationToken =
-                        new UsernamePasswordAuthenticationToken(
-                                authentication,
-                                null,
-                                Collections.emptyList()
-                        );
+                if (user != null) {
+                    UsernamePasswordAuthenticationToken authenticationToken =
+                            new UsernamePasswordAuthenticationToken(
+                                    user,  // Users 엔티티를 직접 넣음
+                                    null,
+                                    Collections.emptyList()
+                            );
 
-                authenticationToken.setDetails(
-                        new WebAuthenticationDetailsSource().buildDetails(request)
-                );
+                    authenticationToken.setDetails(
+                            new WebAuthenticationDetailsSource().buildDetails(request)
+                    );
 
-                SecurityContextHolder.getContext().setAuthentication(authenticationToken);
+                    SecurityContextHolder.getContext().setAuthentication(authenticationToken);
+                }
             }
         } catch (Exception e) {
             log.error("JWT authentication failed: {}", e.getMessage());
