@@ -36,9 +36,7 @@ public class AuthService {
     @Value("${spring.security.oauth2.client.registration.google.client-id}")
     private String googleClientId;
 
-    /**
-     * 회원가입
-     */
+    // 회원가입
     @Transactional
     public AuthDto.AuthResponse signUp(AuthDto.SignUpRequest request) {
         // 이메일 중복 체크
@@ -81,9 +79,7 @@ public class AuthService {
                 .build();
     }
 
-    /**
-     * 로그인
-     */
+   // 로그인
     @Transactional(readOnly = true)
     public AuthDto.AuthResponse login(AuthDto.LoginRequest request) {
         // 사용자 조회
@@ -115,9 +111,7 @@ public class AuthService {
                 .build();
     }
 
-    /**
-     * Google OAuth 로그인
-     */
+    // Google OAuth 로그인
     @Transactional
     public AuthDto.AuthResponse googleLogin(String idToken) {
         try {
@@ -168,9 +162,7 @@ public class AuthService {
         }
     }
 
-    /**
-     * Google 사용자 생성
-     */
+    // Google 사용자 생성
     private Users createGoogleUser(String email, String providerId) {
         // 닉네임 생성 (이메일 앞부분 사용, 중복 시 숫자 추가)
         String baseNickname = email.split("@")[0];
