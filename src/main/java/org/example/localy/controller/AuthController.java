@@ -2,6 +2,7 @@ package org.example.localy.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.tags.Tags;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.example.localy.common.response.BaseResponse;
@@ -24,6 +25,10 @@ public class AuthController {
     private final RedisSubscriber redisSubscriber;
 
     @Operation(summary = "이메일 인증번호 요청", description = "회원가입 시 이메일 인증번호를 요청합니다.")
+    @Tags({
+            @Tag(name = "Auth"),
+            @Tag(name = "MyPage")
+    })
     @PostMapping("/email/verification/send")
     public BaseResponse<AuthDto.EmailVerificationResponse> sendVerificationCode(
             @Valid @RequestBody AuthDto.EmailVerificationRequest request
@@ -39,6 +44,10 @@ public class AuthController {
     }
 
     @Operation(summary = "이메일 인증번호 확인", description = "입력한 인증번호가 올바른지 확인합니다.")
+    @Tags({
+            @Tag(name = "Auth"),
+            @Tag(name = "MyPage")
+    })
     @PostMapping("/email/verification/confirm")
     public BaseResponse<AuthDto.EmailVerificationResponse> confirmVerificationCode(
             @Valid @RequestBody AuthDto.EmailVerificationConfirm request
@@ -91,6 +100,10 @@ public class AuthController {
 
     // 로그아웃
     @Operation(summary = "로그아웃", description = "현재 로그인된 사용자를 로그아웃합니다.")
+    @Tags({
+            @Tag(name = "Auth"),
+            @Tag(name = "MyPage")
+    })
     @PostMapping("/logout")
     public BaseResponse<AuthDto.LogoutResponse> logout(
             @RequestHeader("Authorization") String authorizationHeader
