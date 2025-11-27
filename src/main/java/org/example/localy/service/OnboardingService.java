@@ -8,7 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.example.localy.entity.users.Users;
 import org.example.localy.dto.OnboardingDto;
 import org.example.localy.common.exception.CustomException;
-import org.example.localy.common.exception.AuthErrorCode;
+import org.example.localy.common.exception.errorCode.AuthErrorCode;
 import org.example.localy.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

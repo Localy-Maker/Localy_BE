@@ -2,7 +2,7 @@ package org.example.localy.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.example.localy.common.exception.AuthErrorCode;
+import org.example.localy.common.exception.errorCode.AuthErrorCode;
 import org.example.localy.common.exception.CustomException;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.mail.SimpleMailMessage;

@@ -1,6 +1,7 @@
 package org.example.localy.common.exception;
 
 import lombok.extern.slf4j.Slf4j;
+import org.example.localy.common.exception.errorCode.GlobalErrorCode;
 import org.example.localy.common.response.BaseResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
