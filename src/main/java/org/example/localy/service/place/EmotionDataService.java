@@ -92,4 +92,11 @@ public class EmotionDataService {
                 .map(Map.Entry::getKey)
                 .orElse("neutral");
     }
+
+    // TODO: 수정
+    private Map<String, Double> getDefaultEmotions() {
+        Map<String, Double> emotions = new HashMap<>();
+        emotions.put("neutral", 1.0);
+        return emotions;
+    }
 }
