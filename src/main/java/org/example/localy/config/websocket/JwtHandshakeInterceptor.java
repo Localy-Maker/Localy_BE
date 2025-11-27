@@ -25,6 +25,9 @@ public class JwtHandshakeInterceptor implements HandshakeInterceptor {
 
         String path = request.getURI().getPath();
         String authHeader = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+        log.info("authHeader:{}", authHeader);
+
+        log.info("[Handshake] Path={}, Authorization Header={}", path, authHeader); // 🔹 추가
 
         // SockJS fallback은 인증 없이 통과
         if (path.endsWith("/info") || path.contains("/iframe.html")) {
@@ -44,12 +47,14 @@ public class JwtHandshakeInterceptor implements HandshakeInterceptor {
                 attrs.put("jwt", token);
 
                 log.info("[Handshake] JWT 검증 성공 userId={}, email={}", userId, email);
+                log.info("[Handshake] attrs now: {}", attrs); // 🔹 추가
             } catch (Exception e) {
                 log.warn("[Handshake] JWT 검증 실패: {}", e.getMessage());
                 return false;
             }
         } else {
             log.warn("[Handshake] JWT 없음 → 연결은 허용, CONNECT 단계에서 처리 필요");
+            log.info("[Handshake] attrs at JWT 없음: {}", attrs); // 🔹 추가
         }
 
         return true;
@@ -57,5 +62,7 @@ public class JwtHandshakeInterceptor implements HandshakeInterceptor {
 
     @Override
     public void afterHandshake(ServerHttpRequest request, ServerHttpResponse response,
-                               WebSocketHandler wsHandler, Exception exception) {}
+                               WebSocketHandler wsHandler, Exception exception) {
+        log.info("[Handshake] afterHandshake 호출, exception={}", exception); // 🔹 추가
+    }
 }

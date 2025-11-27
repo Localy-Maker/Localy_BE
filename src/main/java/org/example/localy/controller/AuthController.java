@@ -8,6 +8,7 @@ import org.example.localy.common.response.BaseResponse;
 import org.example.localy.dto.AuthDto;
 import org.example.localy.service.AuthService;
 import org.example.localy.service.EmailVerificationService;
+import org.example.localy.subscriber.RedisSubscriber;
 import org.example.localy.util.JwtUtil;
 import org.springframework.web.bind.annotation.*;
 
@@ -20,6 +21,7 @@ public class AuthController {
     private final AuthService authService;
     private final EmailVerificationService emailVerificationService;
     private final JwtUtil jwtUtil;
+    private final RedisSubscriber redisSubscriber;
 
     @Operation(summary = "이메일 인증번호 요청", description = "회원가입 시 이메일 인증번호를 요청합니다.")
     @PostMapping("/email/verification/send")
@@ -66,6 +68,11 @@ public class AuthController {
             @Valid @RequestBody AuthDto.LoginRequest request
     ) {
         AuthDto.AuthResponse response = authService.login(request);
+
+        // 🔹 추가된 구독 코드 🔹
+        // 로그인 성공 후 해당 userId 채널 구독
+        redisSubscriber.subscribe("localy:chat:bot:" + response.getUserId());
+
         return BaseResponse.success("로그인 완료", response);
     }
 
@@ -75,6 +82,10 @@ public class AuthController {
             @Valid @RequestBody AuthDto.GoogleLoginRequest request
     ) {
         AuthDto.AuthResponse response = authService.googleLogin(request.getIdToken());
+
+        // 🔹 추가된 구독 코드 🔹
+        redisSubscriber.subscribe("localy:chat:bot:" + response.getUserId());
+
         return BaseResponse.success("Google 로그인 완료", response);
     }
 
@@ -90,6 +101,10 @@ public class AuthController {
         Long userId = jwtUtil.getUserIdFromToken(token);
 
         AuthDto.LogoutResponse response = authService.logout(userId);
+
+        // 🔹 로그아웃 시 구독 해제 코드 필요 시 여기에 작성 가능 🔹
+        redisSubscriber.unsubscribe("localy:chat:bot:" + userId);
+
         return BaseResponse.success("로그아웃 완료", response);
     }
 
