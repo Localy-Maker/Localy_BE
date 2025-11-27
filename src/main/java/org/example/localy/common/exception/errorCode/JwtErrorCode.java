@@ -1,4 +1,4 @@
-package org.example.localy.common.exception;
+package org.example.localy.common.exception.errorCode;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;

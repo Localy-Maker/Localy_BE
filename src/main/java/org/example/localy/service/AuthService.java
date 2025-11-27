@@ -6,7 +6,7 @@ import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.example.localy.common.exception.AuthErrorCode;
+import org.example.localy.common.exception.errorCode.AuthErrorCode;
 import org.example.localy.common.exception.CustomException;
 import org.example.localy.dto.AuthDto;
 import org.example.localy.entity.users.Users;
