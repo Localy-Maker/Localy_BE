@@ -91,7 +91,7 @@ public class GPTService {
                 .collect(Collectors.joining(", ", "[", "]"));
 
         String systemPrompt = String.format(
-                "너는 사용자 맞춤형 여행 가이드 AI야. 다음 정보를 참고하여 가장 적합한 1개의 장소 ID와 추천 이유, 매칭 점수를 JSON 형식으로 반환해줘" +
+                "너는 사용자 맞춤형 여행 가이드 AI야. 다음 정보를 참고하여 가장 적합한 최대 5개의 장소 ID와 추천 이유, 매칭 점수를 JSON 형식으로 반환해줘" +
                         "사용자 감정: %s. 관심사: %s. " +
                         "응답은 반드시 {\"recommendedPlaces\": [{id: Long, reason: String, matchScore: Double}]} 형태여야함" +
                         "입력된 장소 목록: %s",
@@ -104,10 +104,10 @@ public class GPTService {
                 .model("gpt-3.5-turbo")
                 .messages(List.of(
                         new ChatMessage("system", systemPrompt),
-                        new ChatMessage("user", "감정에 맞는 1곳을 추천하고 이유와 매칭 점수를 포함한 JSON을 반환해줘.")
+                        new ChatMessage("user", "감정에 맞는 최대 5곳을 추천하고 이유와 매칭 점수를 포함한 JSON을 반환해줘.")
                 ))
                 .temperature(0.7)
-                .maxTokens(250)
+                .maxTokens(400)
                 .build();
 
         ChatCompletionResult result = service.createChatCompletion(request);
