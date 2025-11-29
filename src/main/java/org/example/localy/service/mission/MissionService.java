@@ -6,6 +6,7 @@ import org.example.localy.common.exception.CustomException;
 import org.example.localy.common.exception.errorCode.MissionErrorCode;
 import org.example.localy.constant.EmotionConstants;
 import org.example.localy.dto.mission.MissionDto;
+import org.example.localy.dto.place.RecommendDto;
 import org.example.localy.entity.Users;
 import org.example.localy.entity.place.Mission;
 import org.example.localy.entity.place.Place;
@@ -13,6 +14,7 @@ import org.example.localy.entity.place.PlaceImage;
 import org.example.localy.repository.UserRepository;
 import org.example.localy.repository.place.MissionRepository;
 import org.example.localy.repository.place.PlaceImageRepository;
+import org.example.localy.service.GPTService;
 import org.example.localy.util.DistanceCalculator;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,10 +32,71 @@ public class MissionService {
     private final MissionRepository missionRepository;
     private final UserRepository userRepository;
     private final PlaceImageRepository placeImageRepository;
+    private final GPTService gptService;
 
     private static final double VERIFICATION_RADIUS_KM = 0.05; // 50m
     private static final long NEW_TAG_HOURS = 48; // 48시간 이내 생성된 미션
+    private static final int DEFAULT_MISSION_POINTS = 10;
+    //private static final int DEFAULT_MISSION_POINTS = 10;
 
+    @Transactional
+    public List<RecommendDto.MissionItem> createMissionsForRecommendedPlaces(
+            Users user, List<Place> recommendedPlaces, String emotion) {
+
+        log.info("미션 생성 시작: userId={}, emotion={}, places={}",
+                user.getId(), emotion, recommendedPlaces.size());
+
+        LocalDateTime now = LocalDateTime.now();
+        List<Mission> activeMissions = missionRepository.findActiveByUser(user, now); // 중복 체크를 위해 활성 미션 조회
+
+        List<Mission> newMissions = new java.util.ArrayList<>();
+
+        // 1. 추천 장소별 미션 생성 시도
+        for (Place place : recommendedPlaces) {
+            // 이미 이 장소에 대해 활성/미완료 미션이 있는지 확인 (중복 생성 방지)
+            boolean alreadyHasMission = activeMissions.stream()
+                    .anyMatch(m -> m.getPlace().getId().equals(place.getId()) && !m.getIsCompleted());
+
+            if (alreadyHasMission) {
+                log.info("장소 미션이 이미 존재하여 건너뜁니다: placeId={}", place.getId());
+                continue;
+            }
+
+            // 2. GPT를 호출하여 미션 제목과 설명 생성
+            GPTService.MissionCreationResult missionContent =
+                    gptService.createMissionContent(
+                            place.getTitle(), place.getCategory(), EmotionConstants.toKorean(emotion));
+
+            // 3. Mission 엔티티 생성
+            Mission newMission = Mission.builder()
+                    .user(user)
+                    .place(place)
+                    .title(missionContent.getTitle())
+                    .description(missionContent.getDescription())
+                    .points(DEFAULT_MISSION_POINTS)
+                    .emotion(emotion)
+                    .isCompleted(false)
+                    .createdAt(now)
+                    .expiresAt(now.plusHours(24))
+                    .build();
+
+            newMissions.add(newMission);
+        }
+
+        missionRepository.saveAll(newMissions);
+        log.info("미션 생성 완료. 총 {}개의 미션이 새로 생성되었습니다.", newMissions.size());
+
+        // 4. 생성된 미션을 RecommendDto.MissionItem으로 변환
+        return newMissions.stream()
+                .map(m -> RecommendDto.MissionItem.builder()
+                        .placeId(m.getPlace().getId())
+                        .missionTitle(m.getTitle())
+                        .missionDescription(m.getDescription())
+                        .points(m.getPoints())
+                        .expiresAt(m.getExpiresAt())
+                        .build())
+                .collect(Collectors.toList());
+    }
     // 미션 홈 조회
     @Transactional(readOnly = true)
     public MissionDto.MissionHomeResponse getMissionHome(Users user) {

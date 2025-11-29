@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.*;
 
 @Tag(name = "Mission", description = "미션 관련 API")
 @RestController
-@RequestMapping("/api/missions")
+@RequestMapping("/missions")
 @RequiredArgsConstructor
 public class MissionController {
 

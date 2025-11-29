@@ -62,28 +62,49 @@ public class TourApiService {
                     "pageNo", "1",
                     "mapX", String.valueOf(longitude),
                     "mapY", String.valueOf(latitude),
-                    "radius", String.valueOf(radius != null ? radius : 5000),
+                    "radius", String.valueOf(radius != null ? radius : 20000),
                     "contentTypeId", contentTypeId != null ? contentTypeId : ""
             );
 
             URI url = URI.create(urlString);
 
-            ResponseEntity<TourApiDto.Response<TourApiDto.LocationBasedItem>> response =
+            log.info("========================================");
+            log.info("🌐 한국관광공사 API 호출 URL:");
+            log.info("{}", urlString);
+            log.info("========================================");
+
+            // ApiResponse 사용 (response 래퍼 포함)
+            ResponseEntity<TourApiDto.ApiResponse<TourApiDto.LocationBasedItem>> response =
                     restTemplate.exchange(
                             url,
                             HttpMethod.GET,
                             null,
-                            new ParameterizedTypeReference<TourApiDto.Response<TourApiDto.LocationBasedItem>>() {}
+                            new ParameterizedTypeReference<TourApiDto.ApiResponse<TourApiDto.LocationBasedItem>>() {}
                     );
 
-            if (response.getBody() != null &&
-                    response.getBody().getBody() != null &&
-                    response.getBody().getBody().getItems() != null) {
-                return response.getBody().getBody().getItems().getItem();
+            log.info("API 응답 상태: {}", response.getStatusCode());
+
+            if (response.getBody() != null && response.getBody().getResponse() != null) {
+                TourApiDto.Response<TourApiDto.LocationBasedItem> apiResponse = response.getBody().getResponse();
+
+                log.info("Response Header: {}", apiResponse.getHeader());
+
+                if (apiResponse.getBody() != null) {
+                    log.info("Total Count: {}", apiResponse.getBody().getTotalCount());
+
+                    if (apiResponse.getBody().getItems() != null && apiResponse.getBody().getItems().getItem() != null) {
+                        List<TourApiDto.LocationBasedItem> items = apiResponse.getBody().getItems().getItem();
+                        log.info("조회된 장소 개수: {}", items.size());
+                        return items;
+                    }
+                }
             }
+
+            log.warn("응답 데이터가 비어있음");
             return Collections.emptyList();
         } catch (HttpClientErrorException e) {
-            log.error("위치 기반 관광정보 조회 실패 - HTTP 에러 {} {}: {}", e.getStatusCode(), e.getStatusText(), e.getResponseBodyAsString(), e);
+            log.error("위치 기반 관광정보 조회 실패 - HTTP 에러 {} {}: {}",
+                    e.getStatusCode(), e.getStatusText(), e.getResponseBodyAsString(), e);
             throw new CustomException(PlaceErrorCode.TOUR_API_ERROR);
         } catch (Exception e) {
             log.error("위치 기반 관광정보 조회 실패 - 일반 에러 발생", e);
@@ -97,24 +118,25 @@ public class TourApiService {
             String urlString = createUrl("searchKeyword",
                     "numOfRows", "50",
                     "pageNo", "1",
-                    "keyword", keyword, // 함수 내에서 인코딩 처리해야함
+                    "keyword", keyword,
                     "contentTypeId", contentTypeId != null ? contentTypeId : ""
             );
 
             URI url = URI.create(urlString);
 
-            ResponseEntity<TourApiDto.Response<TourApiDto.LocationBasedItem>> response =
+            ResponseEntity<TourApiDto.ApiResponse<TourApiDto.LocationBasedItem>> response =
                     restTemplate.exchange(
                             url,
                             HttpMethod.GET,
                             null,
-                            new ParameterizedTypeReference<TourApiDto.Response<TourApiDto.LocationBasedItem>>() {}
+                            new ParameterizedTypeReference<TourApiDto.ApiResponse<TourApiDto.LocationBasedItem>>() {}
                     );
 
             if (response.getBody() != null &&
-                    response.getBody().getBody() != null &&
-                    response.getBody().getBody().getItems() != null) {
-                return response.getBody().getBody().getItems().getItem();
+                    response.getBody().getResponse() != null &&
+                    response.getBody().getResponse().getBody() != null &&
+                    response.getBody().getResponse().getBody().getItems() != null) {
+                return response.getBody().getResponse().getBody().getItems().getItem();
             }
             return Collections.emptyList();
         } catch (Exception e) {
@@ -136,19 +158,20 @@ public class TourApiService {
 
             URI url = URI.create(urlString);
 
-            ResponseEntity<TourApiDto.Response<TourApiDto.CommonItem>> response =
+            ResponseEntity<TourApiDto.ApiResponse<TourApiDto.CommonItem>> response =
                     restTemplate.exchange(
                             url,
                             HttpMethod.GET,
                             null,
-                            new ParameterizedTypeReference<TourApiDto.Response<TourApiDto.CommonItem>>() {}
+                            new ParameterizedTypeReference<TourApiDto.ApiResponse<TourApiDto.CommonItem>>() {}
                     );
 
             if (response.getBody() != null &&
-                    response.getBody().getBody() != null &&
-                    response.getBody().getBody().getItems() != null &&
-                    !response.getBody().getBody().getItems().getItem().isEmpty()) {
-                return response.getBody().getBody().getItems().getItem().get(0);
+                    response.getBody().getResponse() != null &&
+                    response.getBody().getResponse().getBody() != null &&
+                    response.getBody().getResponse().getBody().getItems() != null &&
+                    !response.getBody().getResponse().getBody().getItems().getItem().isEmpty()) {
+                return response.getBody().getResponse().getBody().getItems().getItem().get(0);
             }
             return null;
         } catch (Exception e) {
@@ -167,19 +190,20 @@ public class TourApiService {
 
             URI url = URI.create(urlString);
 
-            ResponseEntity<TourApiDto.Response<TourApiDto.IntroItem>> response =
+            ResponseEntity<TourApiDto.ApiResponse<TourApiDto.IntroItem>> response =
                     restTemplate.exchange(
                             url,
                             HttpMethod.GET,
                             null,
-                            new ParameterizedTypeReference<TourApiDto.Response<TourApiDto.IntroItem>>() {}
+                            new ParameterizedTypeReference<TourApiDto.ApiResponse<TourApiDto.IntroItem>>() {}
                     );
 
             if (response.getBody() != null &&
-                    response.getBody().getBody() != null &&
-                    response.getBody().getBody().getItems() != null &&
-                    !response.getBody().getBody().getItems().getItem().isEmpty()) {
-                return response.getBody().getBody().getItems().getItem().get(0);
+                    response.getBody().getResponse() != null &&
+                    response.getBody().getResponse().getBody() != null &&
+                    response.getBody().getResponse().getBody().getItems() != null &&
+                    !response.getBody().getResponse().getBody().getItems().getItem().isEmpty()) {
+                return response.getBody().getResponse().getBody().getItems().getItem().get(0);
             }
             return null;
         } catch (Exception e) {
@@ -199,18 +223,19 @@ public class TourApiService {
 
             URI url = URI.create(urlString);
 
-            ResponseEntity<TourApiDto.Response<TourApiDto.ImageItem>> response =
+            ResponseEntity<TourApiDto.ApiResponse<TourApiDto.ImageItem>> response =
                     restTemplate.exchange(
                             url,
                             HttpMethod.GET,
                             null,
-                            new ParameterizedTypeReference<TourApiDto.Response<TourApiDto.ImageItem>>() {}
+                            new ParameterizedTypeReference<TourApiDto.ApiResponse<TourApiDto.ImageItem>>() {}
                     );
 
             if (response.getBody() != null &&
-                    response.getBody().getBody() != null &&
-                    response.getBody().getBody().getItems() != null) {
-                return response.getBody().getBody().getItems().getItem();
+                    response.getBody().getResponse() != null &&
+                    response.getBody().getResponse().getBody() != null &&
+                    response.getBody().getResponse().getBody().getItems() != null) {
+                return response.getBody().getResponse().getBody().getItems().getItem();
             }
             return Collections.emptyList();
         } catch (Exception e) {

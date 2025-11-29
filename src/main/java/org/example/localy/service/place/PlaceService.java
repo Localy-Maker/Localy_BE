@@ -38,10 +38,21 @@ public class PlaceService {
     private final MissionRepository missionRepository;
 
     // 로컬가이드 홈 조회
-    @Transactional(readOnly = true)
+    @Transactional
     public PlaceDto.HomeResponse getHomeData(Users user, Double latitude, Double longitude) {
         if (latitude == null || longitude == null) {
             throw new CustomException(PlaceErrorCode.LOCATION_REQUIRED);
+        }
+
+        if (user == null) {
+            log.warn("인증되지 않은 사용자가 getHomeData에 접근하여 기본 데이터 반환");
+            // 인증되지 않은 사용자에게는 미션/추천 기능을 비활성화한 응답을 보낼 수 있습니다.
+            return PlaceDto.HomeResponse.builder()
+                    .missionBanner(getMissionBanner(null))
+                    .missionPlaces(List.of())
+                    .recommendedPlaces(List.of())
+                    .recentBookmarks(List.of())
+                    .build();
         }
 
         // 미션 배너 데이터
@@ -66,6 +77,14 @@ public class PlaceService {
 
     // 미션 배너 데이터
     private PlaceDto.MissionBanner getMissionBanner(Users user) {
+        if (user == null) {
+            return PlaceDto.MissionBanner.builder()
+                    .emotionKeyword(getEmotionKeyword("default")) // 기본 키워드
+                    .totalMissions(0)
+                    .completedMissions(0)
+                    .progressPercent(0)
+                    .build();
+        }
         RecommendDto.EmotionData emotionData = emotionDataService.getCurrentEmotion(user);
 
         LocalDateTime now = LocalDateTime.now();
@@ -86,6 +105,7 @@ public class PlaceService {
 
     // 미션 장소 목록
     private List<PlaceDto.PlaceSimple> getMissionPlaces(Users user, Double latitude, Double longitude) {
+        if (user == null) return List.of();
         List<Mission> activeMissions = missionRepository.findActiveByUser(user, LocalDateTime.now());
 
         return activeMissions.stream()
@@ -96,6 +116,7 @@ public class PlaceService {
 
     // 추천 장소 (미션 제외)
     private List<PlaceDto.PlaceSimple> getRecommendedPlaces(Users user, Double latitude, Double longitude) {
+        if (user == null) return List.of();
         try {
             RecommendDto.RecommendResponse recommendation =
                     recommendService.recommendPlaces(user, latitude, longitude);
@@ -123,6 +144,7 @@ public class PlaceService {
 
     // 최근 북마크 생성 (최대 5개)
     private List<PlaceDto.BookmarkItem> getRecentBookmarks(Users user) {
+        if (user == null) return List.of();
         List<Bookmark> bookmarks = bookmarkRepository.findTop5ByUserOrderByCreatedAtDesc(
                 user, PageRequest.of(0, 5));
 

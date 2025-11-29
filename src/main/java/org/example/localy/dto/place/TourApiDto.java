@@ -1,11 +1,23 @@
 package org.example.localy.dto.place;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonSetter;
+import com.fasterxml.jackson.annotation.Nulls;
 import lombok.*;
 
 import java.util.List;
 
 public class TourApiDto {
+
+    // 최상위 응답 래퍼 추가 (API 실제 응답 구조)
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class ApiResponse<T> {
+        private Response<T> response;  // ← "response" 래퍼 추가!
+    }
 
     @Getter
     @Setter
@@ -36,6 +48,8 @@ public class TourApiDto {
         private Integer numOfRows;
         private Integer pageNo;
         private Integer totalCount;
+
+        @JsonSetter(value = "items", nulls = Nulls.AS_EMPTY)
         private Items<T> items;
     }
 
