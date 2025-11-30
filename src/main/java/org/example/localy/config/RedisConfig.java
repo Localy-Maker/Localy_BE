@@ -3,6 +3,7 @@ package org.example.localy.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.extern.slf4j.Slf4j;
+import org.example.localy.subscriber.RedisSubscriber;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
@@ -11,6 +12,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 @Configuration
 @Slf4j
@@ -85,4 +87,5 @@ public class RedisConfig {
     log.info("Redis ObjectMapper 설정 완료 (JavaTimeModule 포함)");
     return mapper;
   }
+
 }
