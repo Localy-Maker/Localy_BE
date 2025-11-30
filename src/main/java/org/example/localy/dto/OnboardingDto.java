@@ -103,5 +103,11 @@ public class OnboardingDto {
 
         @Schema(description = "온보딩 완료 여부")
         private Boolean onboardingCompleted;
+
+        @Schema(description = "표시 언어 선택지 목록", example = "[\"English\", \"Korean\", \"Chinese\"]")
+        private List<String> displayLanguageOptions;
+
+        @Schema(description = "국적 선택지 목록", example = "[\"중국 (China)\", \"베트남 (Vietnam)\"]")
+        private List<String> nationalityOptions;
     }
 }

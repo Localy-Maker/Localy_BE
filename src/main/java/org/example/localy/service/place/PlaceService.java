@@ -46,7 +46,6 @@ public class PlaceService {
 
         if (user == null) {
             log.warn("인증되지 않은 사용자가 getHomeData에 접근하여 기본 데이터 반환");
-            // 인증되지 않은 사용자에게는 미션/추천 기능을 비활성화한 응답을 보낼 수 있습니다.
             return PlaceDto.HomeResponse.builder()
                     .missionBanner(getMissionBanner(null))
                     .missionPlaces(List.of())
@@ -58,11 +57,11 @@ public class PlaceService {
         // 미션 배너 데이터
         PlaceDto.MissionBanner missionBanner = getMissionBanner(user);
 
+        // 감정 기반 추천 장소 (미션 생성 로직 포함)
+        List<PlaceDto.PlaceSimple> recommendedPlaces = getRecommendedPlaces(user, latitude, longitude);
+
         // 미션 장소 (활성 미션의 장소들)
         List<PlaceDto.PlaceSimple> missionPlaces = getMissionPlaces(user, latitude, longitude);
-
-        // 감정 기반 추천 장소
-        List<PlaceDto.PlaceSimple> recommendedPlaces = getRecommendedPlaces(user, latitude, longitude);
 
         // 최근 북마크한 장소
         List<PlaceDto.BookmarkItem> recentBookmarks = getRecentBookmarks(user);
@@ -106,7 +105,9 @@ public class PlaceService {
     // 미션 장소 목록
     private List<PlaceDto.PlaceSimple> getMissionPlaces(Users user, Double latitude, Double longitude) {
         if (user == null) return List.of();
-        List<Mission> activeMissions = missionRepository.findActiveByUser(user, LocalDateTime.now());
+        List<Mission> activeMissions = missionRepository.findActiveByUser(user, LocalDateTime.now()).stream()
+                .filter(m -> !m.getIsCompleted())
+                .collect(Collectors.toList());
 
         return activeMissions.stream()
                 .map(Mission::getPlace)
@@ -114,25 +115,26 @@ public class PlaceService {
                 .collect(Collectors.toList());
     }
 
-    // 추천 장소 (미션 제외)
+    // 추천 장소 (미션 포함)
     private List<PlaceDto.PlaceSimple> getRecommendedPlaces(Users user, Double latitude, Double longitude) {
         if (user == null) return List.of();
         try {
             RecommendDto.RecommendResponse recommendation =
                     recommendService.recommendPlaces(user, latitude, longitude);
 
-            List<Long> missionPlaceIds = missionRepository.findActiveByUser(user, LocalDateTime.now())
-                    .stream()
-                    .map(mission -> mission.getPlace().getId())
-                    .collect(Collectors.toList());
-
             return recommendation.getRecommendedPlaces().stream()
-                    .filter(rec -> !missionPlaceIds.contains(rec.getPlaceId()))
+                    // .filter(rec -> !missionPlaceIds.contains(rec.getPlaceId()))
                     .limit(5)
                     .map(rec -> {
                         Place place = placeRepository.findById(rec.getPlaceId())
                                 .orElse(null);
-                        return place != null ? convertToPlaceSimple(place, latitude, longitude) : null;
+
+                        if (place == null) {
+                            log.warn("GPT가 추천한 Place ID={}에 해당하는 장소를 DB에서 찾을 수 없습니다.", rec.getPlaceId());
+                            return null;
+                        }
+
+                        return convertToPlaceSimple(place, latitude, longitude);
                     })
                     .filter(place -> place != null)
                     .collect(Collectors.toList());
@@ -272,7 +274,7 @@ public class PlaceService {
         }
     }
 
-     // Place를 PlaceSimple로 변환
+    // Place를 PlaceSimple로 변환
     private PlaceDto.PlaceSimple convertToPlaceSimple(Place place, Double latitude, Double longitude) {
         double distance = DistanceCalculator.calculateDistance(
                 latitude, longitude, place.getLatitude(), place.getLongitude());
@@ -306,21 +308,14 @@ public class PlaceService {
 
     // 감정 키워드 변환
     private String getEmotionKeyword(String emotion) {
-        switch (emotion) {
-            case "loneliness":
-                return "외로움";
-            case "joy":
-                return "기쁨";
-            case "sadness":
-                return "슬픔";
-            case "anger":
-                return "분노";
-            case "fear":
-                return "두려움";
-            case "surprise":
-                return "놀람";
-            default:
-                return "평온";
-        }
+        return switch (emotion) {
+            case "depressed" -> "우울";
+            case "joy" -> "기쁨";
+            case "sadness" -> "슬픔";
+            case "anxiety" -> "불안";
+            case "neutral" -> "중립";
+            case "anger" -> "분노";
+            default -> "중립";
+        };
     }
 }

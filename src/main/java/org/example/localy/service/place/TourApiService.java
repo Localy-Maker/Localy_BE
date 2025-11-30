@@ -29,9 +29,11 @@ public class TourApiService {
 
     // 서비스 키 직접 삽입 url 생성
     private String createUrl(String operation, String... params) {
+        String finalServiceKey = apiConfig.getTourApiServiceKey();
+
         StringBuilder urlBuilder = new StringBuilder(apiConfig.getTourApiBaseUrl())
                 .append("/KorService2/").append(operation).append("2")
-                .append("?serviceKey=").append(apiConfig.getTourApiServiceKey())
+                .append("?serviceKey=").append(finalServiceKey)
                 .append("&MobileOS=ETC")
                 .append("&MobileApp=Localy")
                 .append("&_type=json");
@@ -58,8 +60,8 @@ public class TourApiService {
             Double latitude, Double longitude, Integer radius, String contentTypeId) {
         try {
             String urlString = createUrl("locationBasedList",
-                    "numOfRows", "100",
-                    "pageNo", "1",
+                    "numOfRows", apiConfig.getDefaultNumOfRows(),
+                    "pageNo", apiConfig.getDefaultPageNo(),
                     "mapX", String.valueOf(longitude),
                     "mapY", String.valueOf(latitude),
                     "radius", String.valueOf(radius != null ? radius : 20000),
@@ -68,12 +70,9 @@ public class TourApiService {
 
             URI url = URI.create(urlString);
 
-            log.info("========================================");
-            log.info("🌐 한국관광공사 API 호출 URL:");
+            log.info("한국관광공사 API 호출 URL:");
             log.info("{}", urlString);
-            log.info("========================================");
 
-            // ApiResponse 사용 (response 래퍼 포함)
             ResponseEntity<TourApiDto.ApiResponse<TourApiDto.LocationBasedItem>> response =
                     restTemplate.exchange(
                             url,
@@ -116,8 +115,8 @@ public class TourApiService {
     public List<TourApiDto.LocationBasedItem> searchByKeyword(String keyword, String contentTypeId) {
         try {
             String urlString = createUrl("searchKeyword",
-                    "numOfRows", "50",
-                    "pageNo", "1",
+                    "numOfRows", apiConfig.getDefaultNumOfRows(),
+                    "pageNo", apiConfig.getDefaultPageNo(),
                     "keyword", keyword,
                     "contentTypeId", contentTypeId != null ? contentTypeId : ""
             );
@@ -132,11 +131,11 @@ public class TourApiService {
                             new ParameterizedTypeReference<TourApiDto.ApiResponse<TourApiDto.LocationBasedItem>>() {}
                     );
 
-            if (response.getBody() != null &&
-                    response.getBody().getResponse() != null &&
-                    response.getBody().getResponse().getBody() != null &&
-                    response.getBody().getResponse().getBody().getItems() != null) {
-                return response.getBody().getResponse().getBody().getItems().getItem();
+            if (response.getBody() != null && response.getBody().getResponse() != null && response.getBody().getResponse().getBody() != null) {
+
+                if (response.getBody().getResponse().getBody().getItems() != null && response.getBody().getResponse().getBody().getItems().getItem() != null) {
+                    return response.getBody().getResponse().getBody().getItems().getItem();
+                }
             }
             return Collections.emptyList();
         } catch (Exception e) {
@@ -150,10 +149,10 @@ public class TourApiService {
         try {
             String urlString = createUrl("detailCommon",
                     "contentId", contentId,
-                    "defaultYN", "Y",
-                    "firstImageYN", "Y",
-                    "addrinfoYN", "Y",
-                    "overviewYN", "Y"
+                    "defaultYN", apiConfig.getDetailDefaultYn(),
+                    "firstImageYN", apiConfig.getDetailFirstImageYn(),
+                    "addrinfoYN", apiConfig.getDetailAddrInfoYn(),
+                    "overviewYN", apiConfig.getDetailOverviewYn()
             );
 
             URI url = URI.create(urlString);
@@ -166,17 +165,18 @@ public class TourApiService {
                             new ParameterizedTypeReference<TourApiDto.ApiResponse<TourApiDto.CommonItem>>() {}
                     );
 
-            if (response.getBody() != null &&
-                    response.getBody().getResponse() != null &&
-                    response.getBody().getResponse().getBody() != null &&
-                    response.getBody().getResponse().getBody().getItems() != null &&
-                    !response.getBody().getResponse().getBody().getItems().getItem().isEmpty()) {
-                return response.getBody().getResponse().getBody().getItems().getItem().get(0);
+            if (response.getBody() != null && response.getBody().getResponse() != null && response.getBody().getResponse().getBody() != null) {
+
+                TourApiDto.Items<TourApiDto.CommonItem> itemsWrapper = response.getBody().getResponse().getBody().getItems();
+
+                if (itemsWrapper != null && itemsWrapper.getItem() != null && !itemsWrapper.getItem().isEmpty()) {
+                    return itemsWrapper.getItem().get(0);
+                }
             }
             return null;
         } catch (Exception e) {
             log.error("공통정보 조회 실패: {}", contentId, e);
-            throw new CustomException(PlaceErrorCode.TOUR_API_ERROR);
+            return null;
         }
     }
 
@@ -198,17 +198,18 @@ public class TourApiService {
                             new ParameterizedTypeReference<TourApiDto.ApiResponse<TourApiDto.IntroItem>>() {}
                     );
 
-            if (response.getBody() != null &&
-                    response.getBody().getResponse() != null &&
-                    response.getBody().getResponse().getBody() != null &&
-                    response.getBody().getResponse().getBody().getItems() != null &&
-                    !response.getBody().getResponse().getBody().getItems().getItem().isEmpty()) {
-                return response.getBody().getResponse().getBody().getItems().getItem().get(0);
+            if (response.getBody() != null && response.getBody().getResponse() != null && response.getBody().getResponse().getBody() != null) {
+
+                TourApiDto.Items<TourApiDto.IntroItem> itemsWrapper = response.getBody().getResponse().getBody().getItems();
+
+                if (itemsWrapper != null && itemsWrapper.getItem() != null && !itemsWrapper.getItem().isEmpty()) {
+                    return itemsWrapper.getItem().get(0);
+                }
             }
             return null;
         } catch (Exception e) {
             log.error("소개정보 조회 실패: {}", contentId, e);
-            throw new CustomException(PlaceErrorCode.TOUR_API_ERROR);
+            return null;
         }
     }
 
@@ -217,8 +218,8 @@ public class TourApiService {
         try {
             String urlString = createUrl("detailImage",
                     "contentId", contentId,
-                    "imageYN", "Y",
-                    "numOfRows", "10"
+                    "imageYN", apiConfig.getDetailFirstImageYn(), // 이미지 정보 조회에도 YN 플래그 사용
+                    "numOfRows", apiConfig.getDefaultImageRows()
             );
 
             URI url = URI.create(urlString);
@@ -233,9 +234,13 @@ public class TourApiService {
 
             if (response.getBody() != null &&
                     response.getBody().getResponse() != null &&
-                    response.getBody().getResponse().getBody() != null &&
-                    response.getBody().getResponse().getBody().getItems() != null) {
-                return response.getBody().getResponse().getBody().getItems().getItem();
+                    response.getBody().getResponse().getBody() != null) {
+
+                TourApiDto.Items<TourApiDto.ImageItem> itemsWrapper = response.getBody().getResponse().getBody().getItems();
+
+                if (itemsWrapper != null && itemsWrapper.getItem() != null) {
+                    return itemsWrapper.getItem();
+                }
             }
             return Collections.emptyList();
         } catch (Exception e) {

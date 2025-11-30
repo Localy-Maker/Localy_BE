@@ -3,26 +3,27 @@ package org.example.localy.constant;
 import java.util.HashMap;
 import java.util.Map;
 
-// TODO: 수정 필요
 public class EmotionConstants {
 
     private static final Map<String, String> EMOTION_KOREAN_MAP = new HashMap<>();
 
     static {
-        EMOTION_KOREAN_MAP.put("loneliness", "외로움");
-        EMOTION_KOREAN_MAP.put("joy", "기쁨");
+        // 사용자 지정 핵심 6가지 감정
+        EMOTION_KOREAN_MAP.put("happy", "행복");
         EMOTION_KOREAN_MAP.put("sadness", "슬픔");
+        EMOTION_KOREAN_MAP.put("depressed", "우울");
         EMOTION_KOREAN_MAP.put("anger", "분노");
-        EMOTION_KOREAN_MAP.put("fear", "두려움");
-        EMOTION_KOREAN_MAP.put("surprise", "놀람");
-        EMOTION_KOREAN_MAP.put("neutral", "평온");
+        EMOTION_KOREAN_MAP.put("anxiety", "불안");
+        EMOTION_KOREAN_MAP.put("neutral", "중립");
+
+        EMOTION_KOREAN_MAP.put("joy", "기쁨");
     }
 
     public static String toKorean(String emotionCode) {
         if (emotionCode == null || emotionCode.isEmpty()) {
-            return "평온";
+            return "중립";
         }
-        return EMOTION_KOREAN_MAP.getOrDefault(emotionCode.toLowerCase(), "평온");
+        return EMOTION_KOREAN_MAP.getOrDefault(emotionCode.toLowerCase(), "중립");
     }
 
     public static String toCode(String koreanKeyword) {

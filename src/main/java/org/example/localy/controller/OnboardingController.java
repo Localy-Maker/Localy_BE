@@ -18,6 +18,19 @@ public class OnboardingController {
     private final OnboardingService onboardingService;
     private final JwtUtil jwtUtil;
 
+    @Operation(summary = "온보딩 정보 조회", description = "온보딩 완료 여부, 현재 설정 및 선택 옵션 목록 조회")
+    @GetMapping("/onboarding/info")
+    public BaseResponse<OnboardingDto.OnboardingResponse> getOnboardingInfo(
+            @RequestHeader("Authorization") String authorizationHeader
+    ) {
+        String token = authorizationHeader.replace("Bearer ", "");
+        jwtUtil.validateToken(token);
+        Long userId = jwtUtil.getUserIdFromToken(token);
+
+        OnboardingDto.OnboardingResponse response = onboardingService.getOnboardingInfo(userId);
+        return BaseResponse.success("온보딩 정보 조회 성공", response);
+    }
+
     // 언어/국적 선택
     @Operation(summary = "언어/국적 선택", description = "온보딩 1단계 - 사용자의 표시 언어와 국적 저장")
     @PutMapping("/users/nationality")

@@ -2,13 +2,14 @@ package org.example.localy.service.place;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.example.localy.dto.place.RecommendDto;
-import org.example.localy.dto.place.TourApiDto;
-import org.example.localy.entity.place.Place;
-import org.example.localy.entity.place.PlaceImage;
-import org.example.localy.entity.Users;
 import org.example.localy.common.exception.CustomException;
 import org.example.localy.common.exception.errorCode.PlaceErrorCode;
+import org.example.localy.constant.EmotionConstants;
+import org.example.localy.dto.place.RecommendDto;
+import org.example.localy.dto.place.TourApiDto;
+import org.example.localy.entity.Users;
+import org.example.localy.entity.place.Place;
+import org.example.localy.entity.place.PlaceImage;
 import org.example.localy.repository.place.PlaceImageRepository;
 import org.example.localy.repository.place.PlaceRepository;
 import org.example.localy.service.GPTService;
@@ -17,10 +18,8 @@ import org.example.localy.util.CategoryMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.util.*;
 import java.util.stream.Collectors;
-import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
@@ -57,16 +56,28 @@ public class PlaceRecommendService {
             Users user, Double latitude, Double longitude, RecommendDto.EmotionData emotionData) {
 
         String nationality = user.getNationality() != null ? user.getNationality() : "아시아";
-        List<String> keywords = getHomesickKeywords(nationality);
+
+        String baseNationalityKeyword = nationality.split(" ")[0];
+
+        List<String> keywordsToSearch;
+        if (baseNationalityKeyword.equals("직접") || baseNationalityKeyword.equals("아시아") || baseNationalityKeyword.equals("기타")) {
+            keywordsToSearch = List.of("아시아 마트", "국제", "외국인 거리", "전통 시장");
+        } else {
+            keywordsToSearch = List.of(baseNationalityKeyword);
+        }
 
         List<Place> recommendedPlaces = new ArrayList<>();
 
-        for (String keyword : keywords) {
+        for (String keyword : keywordsToSearch) {
             List<TourApiDto.LocationBasedItem> apiPlaces = tourApiService.searchByKeyword(keyword, null);
             for (TourApiDto.LocationBasedItem apiPlace : apiPlaces) {
-                Place place = saveOrUpdatePlace(apiPlace);
-                recommendedPlaces.add(place);
-                if (recommendedPlaces.size() >= 5) break;
+                try {
+                    Place place = saveOrUpdatePlace(apiPlace);
+                    recommendedPlaces.add(place);
+                    if (recommendedPlaces.size() >= 5) break;
+                } catch (CustomException e) {
+                    log.warn("장소 저장/업데이트 중 오류 발생 (TourAPI 상세조회 실패): {}", e.getMessage());
+                }
             }
             if (recommendedPlaces.size() >= 5) break;
         }
@@ -74,10 +85,17 @@ public class PlaceRecommendService {
         List<RecommendDto.MissionItem> missions =
                 missionService.createMissionsForRecommendedPlaces(user, recommendedPlaces, "loneliness");
 
+        // 추천 이유 개인화
+        String personalizedReason = (baseNationalityKeyword.equals("아시아") || baseNationalityKeyword.equals("기타"))
+                ? "고향의 정취를 느낄 수 있는 장소입니다."
+                : baseNationalityKeyword + "의 정취를 느낄 수 있는 장소입니다.";
+
+
+        // 응답 DTO 생성
         List<RecommendDto.RecommendedPlace> result = recommendedPlaces.stream()
                 .map(place -> RecommendDto.RecommendedPlace.builder()
                         .placeId(place.getId())
-                        .reason("고향의 정취를 느낄 수 있는 장소입니다.")
+                        .reason(personalizedReason)
                         .matchScore(0.95)
                         .build())
                 .collect(Collectors.toList());
@@ -91,20 +109,25 @@ public class PlaceRecommendService {
                 .build();
     }
 
-    // CASE B: 일반 감정 기반 명소 추천 (GPT 사용 통합)
+    //@Transactional
     private RecommendDto.RecommendResponse recommendEmotionBasedPlaces(
             Users user, Double latitude, Double longitude, RecommendDto.EmotionData emotionData) {
 
         String dominantEmotion = emotionData.getDominantEmotion();
 
-        // 1. 위치 기반 장소 목록 조회 및 DB 저장/업데이트
         List<TourApiDto.LocationBasedItem> apiPlaces =
                 tourApiService.getLocationBasedList(latitude, longitude, 5000, null);
 
         List<Place> allPlaces = new ArrayList<>();
         for (TourApiDto.LocationBasedItem apiPlace : apiPlaces) {
-            Place place = saveOrUpdatePlace(apiPlace);
-            allPlaces.add(place);
+
+            try {
+                Place place = saveOrUpdatePlace(apiPlace);
+                allPlaces.add(place);
+            } catch (CustomException e) {
+                log.warn("장소 저장/업데이트 중 오류 발생 (TourAPI 상세조회 실패): {}", e.getMessage());
+
+            }
         }
 
         if (allPlaces.isEmpty()) {
@@ -114,7 +137,6 @@ public class PlaceRecommendService {
                     .build();
         }
 
-        // 2. 💡 GPT를 호출하여 장소 매칭 및 추천 이유 생성
         GPTService.PlaceRecommendationResult aiResult =
                 gptService.getRecommendedPlacesByEmotion(
                         allPlaces, dominantEmotion, user.getInterests());
@@ -122,12 +144,11 @@ public class PlaceRecommendService {
         List<GPTService.PlaceRecommendationResult.RecommendedPlace> aiRecommendedList =
                 aiResult.getRecommendedPlaces();
 
-        // 3. GPT가 추천한 Place ID를 기반으로 실제 Place 엔티티 조회 (순서 유지를 위해 ID 순으로 다시 조회)
         List<Long> recommendedPlaceIds = aiRecommendedList.stream()
                 .map(GPTService.PlaceRecommendationResult.RecommendedPlace::getPlaceId)
+                .filter(Objects::nonNull) // null ID 필터링
                 .collect(Collectors.toList());
 
-        // PlaceRepository는 순서를 보장하지 않으므로, ID 순서대로 정렬하기 위해 Map 사용
         Map<Long, Place> placeMap = placeRepository.findAllById(recommendedPlaceIds).stream()
                 .collect(Collectors.toMap(Place::getId, p -> p));
 
@@ -136,17 +157,19 @@ public class PlaceRecommendService {
                 .map(placeMap::get)
                 .collect(Collectors.toList());
 
-        // 4. 미션 생성
+        // 미션 생성
         List<RecommendDto.MissionItem> missions = missionService.createMissionsForRecommendedPlaces(
                 user, recommendedPlaces, dominantEmotion);
 
-        // 5. 응답 DTO 매핑
+        // 응답 DTO 매핑
         Map<Long, String> reasonMap = aiRecommendedList.stream()
+                .filter(rec -> rec.getPlaceId() != null)
                 .collect(Collectors.toMap(
                         GPTService.PlaceRecommendationResult.RecommendedPlace::getPlaceId,
                         GPTService.PlaceRecommendationResult.RecommendedPlace::getReason
                 ));
         Map<Long, Double> scoreMap = aiRecommendedList.stream()
+                .filter(rec -> rec.getPlaceId() != null)
                 .collect(Collectors.toMap(
                         GPTService.PlaceRecommendationResult.RecommendedPlace::getPlaceId,
                         GPTService.PlaceRecommendationResult.RecommendedPlace::getMatchScore
@@ -155,7 +178,9 @@ public class PlaceRecommendService {
         List<RecommendDto.RecommendedPlace> result = recommendedPlaces.stream()
                 .map(place -> RecommendDto.RecommendedPlace.builder()
                         .placeId(place.getId())
+                        // GPT에서 받은 이유가 없을 경우 대체 이유 사용
                         .reason(reasonMap.getOrDefault(place.getId(), generateRecommendReason(dominantEmotion, place.getCategory())))
+                        // GPT에서 받은 점수가 없을 경우 대체 점수 사용
                         .matchScore(scoreMap.getOrDefault(place.getId(), 0.85))
                         .build())
                 .collect(Collectors.toList());
@@ -166,7 +191,6 @@ public class PlaceRecommendService {
                 .build();
     }
 
-    // 장소 저장 또는 업데이트
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Place saveOrUpdatePlace(TourApiDto.LocationBasedItem apiPlace) {
         Optional<Place> existingPlace = placeRepository.findByContentId(apiPlace.getContentid());
@@ -227,13 +251,13 @@ public class PlaceRecommendService {
     private String extractOpeningHours(TourApiDto.IntroItem introItem, String contentTypeId) {
         if (introItem == null) return null;
 
-        switch (contentTypeId) {
-            case "12": return introItem.getUsetime();
-            case "14": return introItem.getUsetimeculture();
-            case "39": return introItem.getOpentimefood();
-            case "38": return introItem.getOpentime();
-            default: return null;
-        }
+        return switch (contentTypeId) {
+            case "12" -> introItem.getUsetime();
+            case "14" -> introItem.getUsetimeculture();
+            case "39" -> introItem.getOpentimefood();
+            case "38" -> introItem.getOpentime();
+            default -> null;
+        };
     }
 
     // 테스트용
@@ -243,17 +267,6 @@ public class PlaceRecommendService {
 
     // 테스트용
     private String generateRecommendReason(String emotion, String category) {
-        return String.format("%s에 어울리는 장소입니다", emotion);
-    }
-
-    // 테스트용
-    private List<String> getHomesickKeywords(String nationality) {
-        Map<String, List<String>> keywordMap = new HashMap<>();
-        keywordMap.put("중국", Arrays.asList("중국", "차이나타운", "중식"));
-        keywordMap.put("일본", Arrays.asList("일본", "일식", "라멘"));
-        keywordMap.put("베트남", Arrays.asList("베트남", "쌀국수", "분짜"));
-        keywordMap.put("미국", Arrays.asList("미국", "햄버거", "스테이크"));
-
-        return keywordMap.getOrDefault(nationality, Arrays.asList("아시아", "국제"));
+        return String.format("%s에 어울리는 장소입니다", EmotionConstants.toKorean(emotion));
     }
 }

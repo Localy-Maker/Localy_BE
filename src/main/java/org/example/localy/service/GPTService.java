@@ -1,5 +1,6 @@
 package org.example.localy.service;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.theokanning.openai.OpenAiService;
 import com.theokanning.openai.completion.CompletionRequest;
@@ -68,20 +69,20 @@ public class GPTService {
     }
 
     public String logingCheck(String userMessage) {
-            OpenAiService service = new OpenAiService(apiKey);
+        OpenAiService service = new OpenAiService(apiKey);
 
-            ChatCompletionRequest request = ChatCompletionRequest.builder()
-                    .model("gpt-3.5-turbo")
-                    .messages(List.of(
-                            new ChatMessage("user", "" + userMessage + "에 그리움이라는 감정이 느껴지면 true로 안 느껴진다면 false로 단답형으로 답해줘.")
-                    ))
-                    .temperature(0.7)
-                    .maxTokens(150)
-                    .build();
+        ChatCompletionRequest request = ChatCompletionRequest.builder()
+                .model("gpt-3.5-turbo")
+                .messages(List.of(
+                        new ChatMessage("user", "" + userMessage + "에 그리움이라는 감정이 느껴지면 true로 안 느껴진다면 false로 단답형으로 답해줘.")
+                ))
+                .temperature(0.7)
+                .maxTokens(150)
+                .build();
 
-            ChatCompletionResult result = service.createChatCompletion(request);
-            return result.getChoices().get(0).getMessage().getContent().trim();
-        }
+        ChatCompletionResult result = service.createChatCompletion(request);
+        return result.getChoices().get(0).getMessage().getContent().trim();
+    }
 
     public MissionCreationResult createMissionContent(String placeName, String category, String emotion) {
         if (apiKey == null || apiKey.isEmpty()) {
@@ -116,42 +117,64 @@ public class GPTService {
     public PlaceRecommendationResult getRecommendedPlacesByEmotion(
             List<Place> availablePlaces, String emotion, String interests) {
 
-        if (apiKey == null || apiKey.isEmpty()) {
-            throw new RuntimeException("OpenAI API Key가 설정되지 않았습니다. 장소 추천을 위해 Key를 설정하세요.");
-        }
         if (availablePlaces.isEmpty()) {
             return new PlaceRecommendationResult(List.of());
         }
 
-        // 1. Place 엔티티 목록을 GPT가 처리할 수 있는 JSON 형태로 변환
-        String placesJson = availablePlaces.stream()
-                .map(p -> String.format("{\"id\":%d, \"name\":\"%s\", \"category\":\"%s\"}",
-                        p.getId(), p.getTitle(), p.getCategory()))
-                .collect(Collectors.joining(", ", "[", "]"));
+        if (apiKey == null || apiKey.isEmpty()) {
+            log.error("GPT API Key가 설정되지 않았습니다. 임시 데이터를 반환합니다.");
+            Place firstPlace = availablePlaces.get(0);
+            return new PlaceRecommendationResult(List.of(
+                    new PlaceRecommendationResult.RecommendedPlace(
+                            firstPlace.getId(),
+                            "GPT API Key 누락으로 인한 임시 추천",
+                            0.75
+                    )
+            ));
+        }
 
-        String systemPrompt = String.format(
-                "너는 사용자 맞춤형 여행 가이드 AI야. 다음 정보를 참고하여 가장 적합한 최대 5개의 장소 ID와 추천 이유, 매칭 점수를 JSON 형식으로 반환해줘" +
-                        "사용자 감정: %s. 관심사: %s. " +
-                        "응답은 반드시 {\"recommendedPlaces\": [{id: Long, reason: String, matchScore: Double}]} 형태여야함" +
-                        "입력된 장소 목록: %s",
-                emotion, interests != null ? interests : "없음", placesJson
-        );
+        try {
+            String placesJson = availablePlaces.stream()
+                    .map(p -> String.format("{\"id\":%d, \"name\":\"%s\", \"category\":\"%s\"}",
+                            p.getId(), p.getTitle(), p.getCategory()))
+                    .collect(Collectors.joining(", ", "[", "]"));
 
-        OpenAiService service = new OpenAiService(apiKey);
+            String systemPrompt = String.format(
+                    "너는 사용자 맞춤형 여행 가이드 AI야. 다음 정보를 참고하여 가장 적합한 최대 5개의 장소 ID와 추천 이유, 매칭 점수를 JSON 형식으로 반환해줘" +
+                            "사용자 감정: %s. 관심사: %s. " +
+                            "응답은 반드시 {\"recommendedPlaces\": [{id: Long, reason: String, matchScore: Double}]} 형태여야함" +
+                            "입력된 장소 목록: %s",
+                    emotion, interests != null ? interests : "없음", placesJson
+            );
 
-        ChatCompletionRequest request = ChatCompletionRequest.builder()
-                .model("gpt-3.5-turbo")
-                .messages(List.of(
-                        new ChatMessage("system", systemPrompt),
-                        new ChatMessage("user", "감정에 맞는 최대 5곳을 추천하고 이유와 매칭 점수를 포함한 JSON을 반환해줘.")
-                ))
-                .temperature(0.7)
-                .maxTokens(400)
-                .build();
+            OpenAiService service = new OpenAiService(apiKey);
 
-        ChatCompletionResult result = service.createChatCompletion(request);
-        String jsonContent = result.getChoices().get(0).getMessage().getContent().trim();
-        return parseRecommendationJson(jsonContent);
+            ChatCompletionRequest request = ChatCompletionRequest.builder()
+                    .model("gpt-3.5-turbo")
+                    .messages(List.of(
+                            new ChatMessage("system", systemPrompt),
+                            new ChatMessage("user", "감정에 맞는 최대 5곳을 추천하고 이유와 매칭 점수를 포함한 JSON을 반환해줘.")
+                    ))
+                    .temperature(0.7)
+                    .maxTokens(400)
+                    .build();
+
+            ChatCompletionResult result = service.createChatCompletion(request);
+            String jsonContent = result.getChoices().get(0).getMessage().getContent().trim();
+            return parseRecommendationJson(jsonContent);
+
+        } catch (Exception e) {
+            log.error("GPT 장소 추천 요청 처리 중 심각한 오류 발생: {}", e.getMessage(), e);
+
+            Place firstPlace = availablePlaces.get(0);
+            return new PlaceRecommendationResult(List.of(
+                    new PlaceRecommendationResult.RecommendedPlace(
+                            firstPlace.getId(),
+                            "GPT 호출 실패로 인한 임시 추천 (테스트용)",
+                            0.75
+                    )
+            ));
+        }
     }
 
     @Getter
@@ -175,6 +198,7 @@ public class GPTService {
 
         @Getter
         public static class RecommendedPlace {
+            @JsonProperty("id")
             private Long placeId;
             private String reason;
             private Double matchScore;
