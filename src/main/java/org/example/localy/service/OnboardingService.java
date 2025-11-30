@@ -55,9 +55,7 @@ public class OnboardingService {
             "관광"
     );
 
-    /**
-     * 온보딩 기본 정보 저장 (언어/국적)
-     */
+    //온보딩 기본 정보 저장 (언어/국적)
     @Transactional
     public OnboardingDto.BasicInfoResponse saveBasicInfo(Long userId, OnboardingDto.BasicInfoRequest request) {
         try {
@@ -89,9 +87,6 @@ public class OnboardingService {
         }
     }
 
-    /**
-     * 관심사 저장/수정 (온보딩 & 마이페이지 공통 사용)
-     */
     @Transactional
     public OnboardingDto.InterestsResponse saveInterests(Long userId, OnboardingDto.InterestsRequest request) {
         try {
@@ -139,16 +134,12 @@ public class OnboardingService {
         }
     }
 
-    /**
-     * 온보딩/마이페이지 정보 조회
-     */
     @Transactional(readOnly = true)
     public OnboardingDto.OnboardingResponse getOnboardingInfo(Long userId) {
         try {
             Users user = userRepository.findById(userId)
                     .orElseThrow(() -> new CustomException(AuthErrorCode.USER_NOT_FOUND));
 
-            // 관심사 JSON 문자열을 List로 변환
             List<String> interests = null;
             if (user.getInterests() != null && !user.getInterests().isEmpty()) {
                 interests = objectMapper.readValue(user.getInterests(), new TypeReference<List<String>>() {});
@@ -163,6 +154,8 @@ public class OnboardingService {
                     .nationality(user.getNationality())
                     .interests(interests)
                     .onboardingCompleted(user.getOnboardingCompleted())
+                    .displayLanguageOptions(DISPLAY_LANGUAGES) // 옵션 추가
+                    .nationalityOptions(NATIONALITIES)      // 옵션 추가
                     .build();
 
         } catch (JsonProcessingException e) {

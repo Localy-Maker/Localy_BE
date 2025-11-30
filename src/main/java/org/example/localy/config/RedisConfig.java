@@ -1,9 +1,9 @@
 package org.example.localy.config;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.extern.slf4j.Slf4j;
-import org.example.localy.subscriber.RedisSubscriber;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
@@ -12,7 +12,6 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 @Configuration
 @Slf4j
@@ -64,28 +63,27 @@ public class RedisConfig {
     // 기본 직렬화 방식 설정
     template.setDefaultSerializer(jsonSerializer);
 
-    template.afterPropertiesSet();
-
     log.info("Object RedisTemplate 설정 완료 (JSON 직렬화)");
     return template;
   }
 
   // Redis용 ObjectMapper 설정
   @Bean
+  @Primary
   public ObjectMapper redisObjectMapper() {
     ObjectMapper mapper = new ObjectMapper();
 
-    // Java 8 시간 타입 지원 모듈 등록
+    mapper.configure(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT, true);
+
     mapper.registerModule(new JavaTimeModule());
 
     // 알 수 없는 속성 무시 (역직렬화 시 호환성)
     mapper.configure(
-        com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES,
-        false
+            com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES,
+            false
     );
 
-    log.info("Redis ObjectMapper 설정 완료 (JavaTimeModule 포함)");
+    log.info("Redis ObjectMapper 설정 완료 (JavaTimeModule 포함, Empty String -> NULL 적용)");
     return mapper;
   }
-
 }
