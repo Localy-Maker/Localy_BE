@@ -2,11 +2,13 @@ package org.example.localy.util;
 
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.example.localy.common.exception.CustomException;
 import org.example.localy.common.exception.errorCode.JwtErrorCode;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
@@ -114,5 +116,19 @@ public class JwtUtil {
         } catch (ExpiredJwtException e) {
             return e.getClaims();
         }
+    }
+
+    /**
+     * Authorization 헤더에서 JWT Access Token 꺼내기
+     * ex) "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI..."
+     */
+    public static String getTokenFromHeader(HttpServletRequest request) {
+        String bearerToken = request.getHeader("Authorization");
+
+        if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
+            return bearerToken.substring(7); // "Bearer " 제거 후 토큰만 반환
+        }
+
+        return null;
     }
 }
