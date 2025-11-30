@@ -71,9 +71,15 @@ dependencies {
 
     runtimeOnly 'com.mysql:mysql-connector-j'
 
+    //WebClient
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'
+
     //openAI
     implementation 'com.theokanning.openai-gpt3-java:client:0.12.0'
     implementation 'com.squareup.okhttp3:okhttp:4.9.3'
+
+    //번역기
+    implementation 'com.google.cloud:google-cloud-translate:2.78.0'
 }
 
 tasks.named('test') {

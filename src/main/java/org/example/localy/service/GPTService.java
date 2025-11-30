@@ -15,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import com.fasterxml.jackson.core.type.TypeReference;
 
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -28,14 +29,36 @@ public class GPTService {
     private String apiKey;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public String generateReply(String userMessage) {
+    Map<String, String> languageMap = Map.ofEntries(
+            Map.entry("ko", "Korean"),
+            Map.entry("en", "English"),
+            Map.entry("fr", "French"),
+            Map.entry("es", "Spanish"),
+            Map.entry("de", "German"),
+            Map.entry("it", "Italian"),
+            Map.entry("ja", "Japanese"),
+            Map.entry("zh", "Chinese"),
+            Map.entry("ru", "Russian"),
+            Map.entry("pt", "Portuguese")
+    );
+
+    public String generateReply(String userMessage, String language) {
+
         OpenAiService service = new OpenAiService(apiKey);
+
+        String langName = languageMap.getOrDefault(language.toLowerCase(), language); // 기본은 그냥 들어온 값
+
+        String prompt = String.format(
+                "User input: \"%s\"\n" +
+                        "Please respond in %s, in a friendly and persuasive tone, " +
+                        "and end with a follow-up question to continue the conversation.",
+                userMessage,
+                langName
+        );
 
         ChatCompletionRequest request = ChatCompletionRequest.builder()
                 .model("gpt-3.5-turbo")
-                .messages(List.of(
-                        new ChatMessage("user", "사용자 입력: " + userMessage + "\n친절하고 권유형으로 답변해줘:")
-                ))
+                .messages(List.of(new ChatMessage("user", prompt)))
                 .temperature(0.7)
                 .maxTokens(150)
                 .build();
@@ -43,6 +66,22 @@ public class GPTService {
         ChatCompletionResult result = service.createChatCompletion(request);
         return result.getChoices().get(0).getMessage().getContent().trim();
     }
+
+    public String logingCheck(String userMessage) {
+            OpenAiService service = new OpenAiService(apiKey);
+
+            ChatCompletionRequest request = ChatCompletionRequest.builder()
+                    .model("gpt-3.5-turbo")
+                    .messages(List.of(
+                            new ChatMessage("user", "" + userMessage + "에 그리움이라는 감정이 느껴지면 true로 안 느껴진다면 false로 단답형으로 답해줘.")
+                    ))
+                    .temperature(0.7)
+                    .maxTokens(150)
+                    .build();
+
+            ChatCompletionResult result = service.createChatCompletion(request);
+            return result.getChoices().get(0).getMessage().getContent().trim();
+        }
 
     public MissionCreationResult createMissionContent(String placeName, String category, String emotion) {
         if (apiKey == null || apiKey.isEmpty()) {
