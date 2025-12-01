@@ -29,19 +29,6 @@ public class PlaceController {
         return ResponseEntity.ok(BaseResponse.success("장소추천 홈 조회 성공", response));
     }
 
-    @GetMapping("/recommend")
-    public ResponseEntity<BaseResponse<RecommendDto.RecommendResponse>> getRecommendationsAndMissions(
-            @AuthenticationPrincipal Users user,
-            @RequestParam Double latitude,
-            @RequestParam Double longitude) {
-
-        // Service 메소드 호출
-        RecommendDto.RecommendResponse response = placeService.getRecommendationsAndMissions(user, latitude, longitude);
-
-        // 응답은 RecommendResponse에 담겨 있으며, 이는 recommendedPlaces와 missions 필드를 포함합니다.
-        return ResponseEntity.ok(BaseResponse.success("장소 추천 및 미션 생성 완료", response));
-    }
-
     // 장소 상세 페이지 조회
     @GetMapping("/{placeId}")
     public ResponseEntity<BaseResponse<PlaceDto.PlaceDetail>> getPlaceDetail(
