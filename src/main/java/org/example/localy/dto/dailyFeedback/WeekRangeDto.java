@@ -1,4 +1,4 @@
-package org.example.localy.dto.emotion;
+package org.example.localy.dto.dailyFeedback;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -9,8 +9,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class WindowScoreDto {
-    private String window;
-    private Double avgScore;
-    private String emotion;
+public class WeekRangeDto {
+    private String start;
+    private String end;
 }

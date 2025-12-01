@@ -1,4 +1,4 @@
-package org.example.localy.dto.emotion;
+package org.example.localy.dto.dailyFeedback;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
