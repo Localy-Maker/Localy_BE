@@ -10,6 +10,7 @@ import org.example.localy.dto.AuthDto;
 import org.example.localy.service.AuthService;
 import org.example.localy.service.EmailVerificationService;
 import org.example.localy.subscriber.RedisSubscriber;
+import org.example.localy.subscriber.RedisSubscriberInitializer;
 import org.example.localy.util.JwtUtil;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,6 +24,7 @@ public class AuthController {
     private final EmailVerificationService emailVerificationService;
     private final JwtUtil jwtUtil;
     private final RedisSubscriber redisSubscriber;
+    private final RedisSubscriberInitializer subscriberInitializer;
 
     @Operation(summary = "이메일 인증번호 요청", description = "회원가입 시 이메일 인증번호를 요청합니다.")
     @Tags({
@@ -68,6 +70,9 @@ public class AuthController {
             @Valid @RequestBody AuthDto.SignUpRequest request
     ) {
         AuthDto.AuthResponse response = authService.signUp(request);
+        // 신규 가입한 유저의 1대1 채널 구독 시작
+        String channel = "localy:chat:bot:" + response.getUserId();
+        redisSubscriber.subscribe(channel);
         return BaseResponse.success("회원가입 완료", response);
     }
 
@@ -78,9 +83,9 @@ public class AuthController {
     ) {
         AuthDto.AuthResponse response = authService.login(request);
 
-        // 🔹 추가된 구독 코드 🔹
-        // 로그인 성공 후 해당 userId 채널 구독
-        redisSubscriber.subscribe("localy:chat:bot:" + response.getUserId());
+        // 신규 가입한 유저의 1대1 채널 구독 시작
+        String channel = "localy:chat:bot:" + response.getUserId();
+        redisSubscriber.subscribe(channel);
 
         return BaseResponse.success("로그인 완료", response);
     }
@@ -92,8 +97,9 @@ public class AuthController {
     ) {
         AuthDto.AuthResponse response = authService.googleLogin(request.getIdToken());
 
-        // 🔹 추가된 구독 코드 🔹
-        redisSubscriber.subscribe("localy:chat:bot:" + response.getUserId());
+        // 신규 가입한 유저의 1대1 채널 구독 시작
+        String channel = "localy:chat:bot:" + response.getUserId();
+        redisSubscriber.subscribe(channel);
 
         return BaseResponse.success("Google 로그인 완료", response);
     }

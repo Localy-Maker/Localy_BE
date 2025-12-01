@@ -10,6 +10,8 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Component
@@ -17,6 +19,7 @@ public class RedisSubscriber implements MessageListener {
 
     private final RedisMessageListenerContainer listenerContainer;
     private final SimpMessagingTemplate messagingTemplate;
+    private final Set<String> subscribedChannels = ConcurrentHashMap.newKeySet();
 
     @Autowired
     public RedisSubscriber(RedisMessageListenerContainer listenerContainer,
@@ -26,11 +29,16 @@ public class RedisSubscriber implements MessageListener {
     }
 
     public void subscribe(String channel) {
+        if (subscribedChannels.contains(channel)) return;
         listenerContainer.addMessageListener(this, new ChannelTopic(channel));
+        subscribedChannels.add(channel);
+
+        log.info("🔔 Redis 구독 시작: " + channel);
     }
 
     public void unsubscribe(String channel) {
         listenerContainer.removeMessageListener(this, new ChannelTopic(channel));
+        log.info("🔔 Redis 구독 취소: " + channel);
     }
 
     @Override
