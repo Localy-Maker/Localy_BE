@@ -19,6 +19,10 @@ import org.example.localy.util.DistanceCalculator;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.example.localy.common.exception.errorCode.GlobalErrorCode;
+import org.springframework.data.redis.core.RedisTemplate;
+import java.util.concurrent.TimeUnit;
+import java.util.Objects;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -36,6 +40,9 @@ public class PlaceService {
     private final BookmarkRepository bookmarkRepository;
     private final PlaceImageRepository placeImageRepository;
     private final MissionRepository missionRepository;
+    private final RedisTemplate<String, Object> objectRedisTemplate;
+    private static final String RECOMMENDED_PLACES_KEY_PREFIX = "localy:recommended_places:";
+    private static final long RECOMMENDED_PLACES_TTL_HOURS = 24;
 
     // 로컬가이드 홈 조회
     @Transactional
@@ -57,11 +64,11 @@ public class PlaceService {
         // 미션 배너 데이터
         PlaceDto.MissionBanner missionBanner = getMissionBanner(user);
 
-        // 감정 기반 추천 장소 (미션 생성 로직 포함)
-        List<PlaceDto.PlaceSimple> recommendedPlaces = getRecommendedPlaces(user, latitude, longitude);
-
         // 미션 장소 (활성 미션의 장소들)
         List<PlaceDto.PlaceSimple> missionPlaces = getMissionPlaces(user, latitude, longitude);
+
+        // [수정] Redis에서 이전에 저장된 추천 장소 목록을 조회 (생성 로직 없음)
+        List<PlaceDto.PlaceSimple> recommendedPlaces = getSavedRecommendedPlaces(user, latitude, longitude);
 
         // 최근 북마크한 장소
         List<PlaceDto.BookmarkItem> recentBookmarks = getRecentBookmarks(user);
@@ -72,6 +79,84 @@ public class PlaceService {
                 .recommendedPlaces(recommendedPlaces)
                 .recentBookmarks(recentBookmarks)
                 .build();
+    }
+
+    @Transactional
+    // [수정] 반환 타입을 RecommendDto.RecommendResponse로 변경
+    public RecommendDto.RecommendResponse getRecommendationsAndMissions(Users user, Double latitude, Double longitude) {
+        if (latitude == null || longitude == null) {
+            throw new CustomException(PlaceErrorCode.LOCATION_REQUIRED);
+        }
+
+        if (user == null) {
+            log.warn("인증되지 않은 사용자가 getRecommendationsAndMissions에 접근하여 오류 발생");
+            throw new CustomException(GlobalErrorCode.UNAUTHORIZED);
+        }
+
+        // 1. 추천 장소 및 미션 생성 (RecommendDto.RecommendResponse 반환)
+        RecommendDto.RecommendResponse recommendation =
+                recommendService.recommendPlaces(user, latitude, longitude);
+
+        // 2. Redis에 저장할 Place ID 추출 (이전 로직과 동일)
+        List<Long> recommendedPlaceIds = recommendation.getRecommendedPlaces().stream()
+                .map(RecommendDto.RecommendedPlace::getPlaceId)
+                .toList();
+
+        // 3. Redis에 추천 장소 ID 목록 저장 (이전 로직과 동일)
+        String redisKey = RECOMMENDED_PLACES_KEY_PREFIX + user.getId();
+        objectRedisTemplate.opsForValue().set(
+                redisKey,
+                recommendedPlaceIds,
+                RECOMMENDED_PLACES_TTL_HOURS,
+                TimeUnit.HOURS
+        );
+        log.info("Redis에 추천 장소 ID {}개를 저장했습니다. Key: {}", recommendedPlaceIds.size(), redisKey);
+
+
+        // [수정] 추천 장소 목록과 새로 생성된 미션 상세 정보를 포함하는 원본 DTO를 반환
+        return recommendation;
+    }
+
+    private List<PlaceDto.PlaceSimple> getSavedRecommendedPlaces(Users user, Double latitude, Double longitude) {
+        if (user == null) return List.of();
+
+        String redisKey = RECOMMENDED_PLACES_KEY_PREFIX + user.getId();
+        Object cachedData = objectRedisTemplate.opsForValue().get(redisKey);
+
+        if (cachedData instanceof List<?> cachedIds) {
+            log.info("Redis에서 캐시된 추천 장소 ID {}개를 발견했습니다. Key: {}", cachedIds.size(), redisKey);
+
+            List<Long> placeIds;
+            try {
+                placeIds = cachedIds.stream()
+                        .filter(Long.class::isInstance)
+                        .map(Long.class::cast)
+                        .toList();
+
+            } catch (ClassCastException e) {
+                log.error("Redis 캐시 데이터 타입 변환 실패", e);
+                return List.of();
+            }
+
+            List<Place> places = placeRepository.findAllById(placeIds);
+
+            return placeIds.stream()
+                    .map(id -> places.stream()
+                            .filter(p -> p.getId().equals(id))
+                            .findFirst()
+                            .map(place -> convertToPlaceSimple(place, latitude, longitude))
+                            .orElse(null)
+                    )
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
+
+        } else if (cachedData != null) {
+            log.warn("Redis 캐시된 데이터가 예상치 않은 형식입니다: {}", cachedData.getClass().getName());
+        } else {
+            log.info("Redis에 캐시된 추천 장소 데이터가 없습니다. Key: {}", redisKey);
+        }
+
+        return List.of();
     }
 
     // 미션 배너 데이터
