@@ -57,4 +57,28 @@ public interface ChatBotRepository extends JpaRepository<ChatMessage, Long> {
     void deleteMessagesByUserIdAndDate(@Param("userId") Long userId,
                                        @Param("date") LocalDate date);
 
+    List<ChatMessage> findByCreatedAtBetween(LocalDateTime start, LocalDateTime end);
+
+    List<ChatMessage> findByRoleAndCreatedAtBetween(ChatMessage.Role role, LocalDateTime start, LocalDateTime end);
+
+    List<ChatMessage> findByUserIdAndCreatedAtBetween(
+            Long userId, LocalDateTime start, LocalDateTime end
+    );
+
+    @Query("SELECT DISTINCT m.userId FROM ChatMessage m WHERE m.createdAt BETWEEN :start AND :end")
+    List<Long> findDistinctUserIdsToday(LocalDateTime start, LocalDateTime end);
+
+    @Query("""
+    SELECT m.emotionAfter FROM ChatMessage m 
+    WHERE m.userId = :userId
+    AND m.createdAt BETWEEN :start AND :end
+    AND m.emotionAfter IS NOT NULL
+    ORDER BY m.createdAt DESC LIMIT 1""")
+    Integer findLatestEmotionAfterToday(Long userId, LocalDateTime start, LocalDateTime end);
+
+    @Query("SELECT COUNT(c) FROM ChatMessage c WHERE c.userId = :userId AND c.role = 'USER' AND c.createdAt >= :startOfDay AND c.createdAt < :endOfDay")
+    Long countTodayUserMessages(@Param("userId") Long userId,
+                                @Param("startOfDay") LocalDateTime startOfDay,
+                                @Param("endOfDay") LocalDateTime endOfDay);
+
 }
