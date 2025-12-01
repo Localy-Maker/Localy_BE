@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.example.localy.repository.EmotionWindowResultRepository;
 import org.springframework.stereotype.Service;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -19,10 +20,10 @@ public class EmotionWindowService {
         List<Object[]> sectionCounts = repository.findSectionCountByUser(userId);
 
         if (sectionCounts.isEmpty()) {
-            return Map.of(
-                    "mostFrequentSection", null,
-                    "mostFrequentEmotion", null
-            );
+            Map<String, Object> result = new HashMap<>();
+            result.put("mostFrequentSection", null);
+            result.put("mostFrequentEmotion", null);
+            return result;
         }
 
         Integer mostFrequentSection = (Integer) sectionCounts.get(0)[0];
