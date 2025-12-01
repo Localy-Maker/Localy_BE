@@ -55,4 +55,11 @@ public interface EmotionWindowResultRepository extends JpaRepository<EmotionWind
     // ⭐ 추가: 특정 기간의 모든 윈도우 결과 조회 (일일 집계용)
     List<EmotionWindowResult> findByCreatedAtBetween(LocalDateTime start, LocalDateTime end);
 
+    @Query("SELECT e.emotion FROM EmotionWindowResult e " +
+            "WHERE e.userId = :userId AND e.createdAt BETWEEN :start AND :end")
+    List<String> findEmotionsByUserAndWeek(
+            @Param("userId") Long userId,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
+
 }

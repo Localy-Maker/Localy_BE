@@ -6,6 +6,7 @@ import org.example.localy.entity.EmotionDayResult;
 import org.example.localy.entity.EmotionWindowResult;
 import org.example.localy.repository.EmotionDayResultRepository;
 import org.example.localy.repository.EmotionWindowResultRepository;
+import org.example.localy.service.HomeEmotionCalcService;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,9 +24,10 @@ public class DayEmotionScheduler {
 
     private final EmotionWindowResultRepository windowRepository;
     private final EmotionDayResultRepository dayResultRepository;
+    private final HomeEmotionCalcService calcService;
 
     // 매일 00시 00분에 실행
-    @Scheduled(cron = "0 12 21 * * *")
+    @Scheduled(cron = "0 0 0 * * *")
     @Transactional
     public void aggregateDailyEmotions() {
         log.info("=== 일일 감정 집계 시작 ===");
@@ -91,6 +93,9 @@ public class DayEmotionScheduler {
         }
 
         log.info("=== 일일 감정 집계 완료 ===");
+
+        //홈 감정 redis에 업데이트 완료
+        calcService.updateAllUsers();
     }
 
     private int calculateSection(double score) {
