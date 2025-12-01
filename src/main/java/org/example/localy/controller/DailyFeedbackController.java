@@ -25,7 +25,7 @@ import static org.example.localy.common.exception.errorCode.JwtErrorCode.JWT_MIS
 @Slf4j
 @RestController
 @Tag(name = "DailyFeedback", description = "데일리피드백 api")
-@RequestMapping("/dailyFeedback")
+@RequestMapping("/api/dailyFeedback")
 @RequiredArgsConstructor
 public class DailyFeedbackController {
 

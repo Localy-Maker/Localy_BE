@@ -24,7 +24,7 @@ import static org.example.localy.common.exception.errorCode.JwtErrorCode.JWT_MIS
 @Slf4j
 @Tag(name = "Chat", description = "챗봇 api")
 @RestController
-@RequestMapping("/chat")
+@RequestMapping("/api/chat")
 @RequiredArgsConstructor
 public class ChatController {
 

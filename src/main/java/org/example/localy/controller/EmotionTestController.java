@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.*;
 @Slf4j
 @Tag(name = "EmotionTest", description = "감정 테스트 API")
 @RestController
-@RequestMapping("/emotionTest")
+@RequestMapping("/api/emotionTest")
 @RequiredArgsConstructor
 public class EmotionTestController {
 
