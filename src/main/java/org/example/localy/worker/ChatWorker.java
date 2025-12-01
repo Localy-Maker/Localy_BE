@@ -2,6 +2,7 @@ package org.example.localy.worker;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import jakarta.persistence.QueryTimeoutException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.localy.dto.chatBot.response.PredictResponse;
@@ -125,6 +126,14 @@ public class ChatWorker {
                 // 메시지 처리
                 processMessages(messages);
 
+            } catch (QueryTimeoutException e) {
+                // Redis 타임아웃은 정상적인 상황 (메시지가 없을 때)
+                if (running) {
+                    log.debug("⏱️ Redis read timeout (no messages) - this is normal");
+                } else {
+                    break;
+                }
+
             } catch (RedisConnectionFailureException | RedisSystemException e) {
                 // Redis 연결 오류 처리
                 if (running) {
@@ -162,7 +171,7 @@ public class ChatWorker {
         try {
             return objectRedisTemplate.opsForStream().read(
                     Consumer.from("chat-consumer-group", "worker-1"),
-                    StreamReadOptions.empty().count(1).block(Duration.ofSeconds(2)),
+                    StreamReadOptions.empty().count(1).block(Duration.ofSeconds(30)),
                     StreamOffset.create("localy:chat:stream", ReadOffset.lastConsumed())
             );
         } catch (Exception e) {
