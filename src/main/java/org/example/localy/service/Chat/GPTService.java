@@ -250,4 +250,27 @@ public class GPTService {
             return new PlaceRecommendationResult(List.of());
         }
     }
+
+    public String pickEmotionKeyword(String category, double avgScore) {
+
+        OpenAiService service = new OpenAiService(apiKey);
+
+        String prompt = String.format(
+                "감정 구간: %s, 평균 점수: %.2f\n" +
+                        "이 감정 상태를 가장 잘 표현하는 한국어 단어를 1개만 제시해줘. 절대로 문장 금지, 단어만 답해.",
+                category, avgScore
+        );
+
+        ChatCompletionRequest request = ChatCompletionRequest.builder()
+                .model("gpt-3.5-turbo")
+                .messages(List.of(
+                        new ChatMessage("user", prompt)
+                ))
+                .temperature(0.5)
+                .maxTokens(10)
+                .build();
+
+        ChatCompletionResult result = service.createChatCompletion(request);
+        return result.getChoices().get(0).getMessage().getContent().trim();
+    }
 }

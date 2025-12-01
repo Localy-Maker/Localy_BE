@@ -9,7 +9,7 @@ import org.springframework.http.HttpStatus;
 @AllArgsConstructor
 public enum ChatErrorCode implements BaseErrorCode {
 
-    NOT_(HttpStatus.NOT_FOUND, "PLACE001", "존재하지 않는 장소입니다.");
+    NOT_EMOTION_RESULTS(HttpStatus.NOT_FOUND, "E001", "최근 감정 결과가 존재하지 않습니다.");
 
     private final HttpStatus status;
     private final String code;

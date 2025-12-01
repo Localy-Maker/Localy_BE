@@ -1,8 +1,7 @@
-package org.example.localy.service.Chat;
+package org.example.localy.scheduler;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.catalina.User;
 import org.example.localy.entity.Users;
 import org.example.localy.repository.ChatBotRepository;
 import org.example.localy.repository.UserRepository;
@@ -14,19 +13,18 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class ChatCleanupService {
+public class ChatCleanupScheduler {
 
     private final ChatBotRepository chatBotRepository;
     private final UserRepository userRepository;
     private final RedisTemplate<String, String> redisTemplate;
     private final RedisTemplate<String, Object> objectRedisTemplate;
 
-    @Scheduled(cron = "0 53 8 * * *") // 매일 08:18
+    @Scheduled(cron = "0 0 0 * * *") // 매일 08:18
     @Transactional
     public void cleanupOldChats() {
 
