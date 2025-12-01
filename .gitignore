@@ -38,3 +38,6 @@ out/
 .vscode/
 
 application.yml
+application-test.yml
+
+localy-479500-78e63f2e86cc.json
