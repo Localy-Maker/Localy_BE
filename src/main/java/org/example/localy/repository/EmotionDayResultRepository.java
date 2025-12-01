@@ -18,4 +18,12 @@ public interface EmotionDayResultRepository extends JpaRepository<EmotionDayResu
 
     List<EmotionDayResult> findByUserIdAndDateBetween(Long userId, LocalDate start, LocalDate end);
 
+    @Query("SELECT e.avgScore FROM EmotionDayResult e " +
+            "WHERE e.userId = :userId AND e.date BETWEEN :start AND :end")
+    List<Double> findAvgScoresByDateRange(
+            @Param("userId") Long userId,
+            @Param("start") LocalDate start,
+            @Param("end") LocalDate end);
+
+
 }
