@@ -2,8 +2,8 @@ package org.example.localy.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.example.localy.dto.emotion.DailyFeedbackDto;
-import org.example.localy.dto.emotion.WindowScoreDto;
+import org.example.localy.dto.dailyFeedback.DailyFeedbackDto;
+import org.example.localy.dto.dailyFeedback.WindowScoreDto;
 import org.example.localy.entity.EmotionWindowResult;
 import org.example.localy.repository.EmotionWindowResultRepository;
 import org.springframework.stereotype.Service;

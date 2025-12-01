@@ -52,4 +52,7 @@ public interface EmotionWindowResultRepository extends JpaRepository<EmotionWind
                                                     @Param("section") Integer section);
 
 
+    // ⭐ 추가: 특정 기간의 모든 윈도우 결과 조회 (일일 집계용)
+    List<EmotionWindowResult> findByCreatedAtBetween(LocalDateTime start, LocalDateTime end);
+
 }
