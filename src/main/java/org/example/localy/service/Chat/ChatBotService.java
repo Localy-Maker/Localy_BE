@@ -1,4 +1,4 @@
-package org.example.localy.service;
+package org.example.localy.service.Chat;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.RedisTemplate;

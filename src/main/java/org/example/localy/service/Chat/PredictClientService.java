@@ -1,4 +1,4 @@
-package org.example.localy.service;
+package org.example.localy.service.Chat;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -6,8 +6,6 @@ import org.example.localy.dto.chatBot.request.PredictRequest;
 import org.example.localy.dto.chatBot.response.PredictResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
-
-import java.util.Map;
 
 @Slf4j
 @Service

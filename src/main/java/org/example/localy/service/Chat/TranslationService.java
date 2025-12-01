@@ -1,4 +1,4 @@
-package org.example.localy.service;
+package org.example.localy.service.Chat;
 
 import com.google.cloud.translate.v3.*;
 import org.example.localy.dto.chatBot.response.TranslateResponse;

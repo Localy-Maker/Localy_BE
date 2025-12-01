@@ -14,7 +14,7 @@ import org.example.localy.entity.place.PlaceImage;
 import org.example.localy.repository.UserRepository;
 import org.example.localy.repository.place.MissionRepository;
 import org.example.localy.repository.place.PlaceImageRepository;
-import org.example.localy.service.GPTService;
+import org.example.localy.service.Chat.GPTService;
 import org.example.localy.util.DistanceCalculator;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

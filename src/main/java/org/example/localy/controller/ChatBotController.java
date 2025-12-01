@@ -3,7 +3,7 @@ package org.example.localy.controller;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.localy.entity.ChatMessage;
-import org.example.localy.service.ChatBotService;
+import org.example.localy.service.Chat.ChatBotService;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.stereotype.Controller;
 

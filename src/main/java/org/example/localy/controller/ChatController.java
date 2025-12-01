@@ -11,7 +11,7 @@ import org.example.localy.common.response.BaseResponse;
 import org.example.localy.config.jwt.JwtAuthenticationFilter;
 import org.example.localy.dto.chatBot.response.ChatMessageResponse;
 import org.example.localy.repository.UserRepository;
-import org.example.localy.service.ChatService;
+import org.example.localy.service.Chat.ChatService;
 import org.example.localy.util.JwtUtil;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
