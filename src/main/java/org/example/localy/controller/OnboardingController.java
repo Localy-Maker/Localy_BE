@@ -11,6 +11,7 @@ import org.example.localy.service.OnboardingService;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
+@RequestMapping("/api")
 @RequiredArgsConstructor
 @Tag(name = "Onboarding", description = "온보딩 및 마이페이지 API")
 public class OnboardingController {
