@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import org.example.localy.dto.place.RecommendDto;
 
 @RestController
-@RequestMapping("/places")
+@RequestMapping("/api/places")
 @RequiredArgsConstructor
 public class PlaceController {
 
