@@ -27,7 +27,7 @@ public class WeeklyFeedbackService {
 
         // 기본값 score = 0
         Map<String, Integer> dayScoreMap = new HashMap<>();
-        days.forEach(d -> dayScoreMap.put(d, 0));
+        days.forEach(d -> dayScoreMap.put(d, -1));
 
         // 👉 DB에서 가져오기
         List<EmotionDayResult> records =
