@@ -10,7 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @Slf4j
-@Tag(name = "EmotionTest", description = "감정 테스트 API")
+@Tag(name = "EmotionTest", description = "감정 테스트 API (감정 테스트용이니 테스트 이외의 용도로 사용하시면 안 됩니다!")
 @RestController
 @RequestMapping("/api/emotionTest")
 @RequiredArgsConstructor

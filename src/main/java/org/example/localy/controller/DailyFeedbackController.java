@@ -64,6 +64,7 @@ public class DailyFeedbackController {
     @Operation(
             summary = "일주일 데일리피드백 - 일주일동안의 데일리피드백을 반환합니다.",
             description = """
+          score가 -1로 나오면, 그 날 채팅 기록과 감정기록은 존재하지 않는다는 의미입니다.
           """
     )
     @GetMapping("/week")
