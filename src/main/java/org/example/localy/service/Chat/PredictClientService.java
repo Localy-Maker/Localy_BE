@@ -18,7 +18,7 @@ public class PredictClientService {
         PredictRequest request = new PredictRequest(text);
 
         return webClient.post()
-                .uri("http://localhost:8000/predict")
+                .uri("http://localhost:8000/textEmotion/predict")
                 .bodyValue(request)
                 .retrieve()
                 .bodyToMono(PredictResponse.class)
