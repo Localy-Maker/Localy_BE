@@ -171,7 +171,7 @@ public class ChatWorker {
         try {
             return objectRedisTemplate.opsForStream().read(
                     Consumer.from("chat-consumer-group", "worker-1"),
-                    StreamReadOptions.empty().count(1).block(Duration.ofSeconds(30)),
+                    StreamReadOptions.empty().count(1).block(Duration.ofSeconds(2)),
                     StreamOffset.create("localy:chat:stream", ReadOffset.lastConsumed())
             );
         } catch (Exception e) {
