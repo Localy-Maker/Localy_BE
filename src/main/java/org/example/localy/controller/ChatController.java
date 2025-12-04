@@ -10,9 +10,11 @@ import org.example.localy.common.exception.CustomException;
 import org.example.localy.common.response.BaseResponse;
 import org.example.localy.config.jwt.JwtAuthenticationFilter;
 import org.example.localy.dto.chatBot.response.ChatMessageResponse;
+import org.example.localy.entity.Users;
 import org.example.localy.repository.UserRepository;
 import org.example.localy.service.Chat.ChatService;
 import org.example.localy.util.JwtUtil;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -39,10 +41,9 @@ public class ChatController {
           """
     )
     @GetMapping("/chatMessages/today")
-    public BaseResponse<List<ChatMessageResponse>> todayMessages(HttpServletRequest request) {
+    public BaseResponse<List<ChatMessageResponse>> todayMessages(@AuthenticationPrincipal Users user) {
 
-        String token = jwtUtil.getTokenFromHeader(request);
-        Long userId = jwtUtil.getUserIdFromToken(token);
+        Long userId =  user.getId();
 
         if(userId!=null){
             List<ChatMessageResponse> todayMessages = chatService.getTodayChat(userId);
@@ -59,10 +60,9 @@ public class ChatController {
           """
     )
     @GetMapping("/chatMessages/past")
-    public BaseResponse<List<ChatMessageResponse>> pastMessages(HttpServletRequest request) {
+    public BaseResponse<List<ChatMessageResponse>> pastMessages(@AuthenticationPrincipal Users user) {
 
-        String token = jwtUtil.getTokenFromHeader(request);
-        Long userId = jwtUtil.getUserIdFromToken(token);
+        Long userId = user.getId();
 
         if(userId!=null){
             List<ChatMessageResponse> pastMessages = chatService.getPastChat(userId);

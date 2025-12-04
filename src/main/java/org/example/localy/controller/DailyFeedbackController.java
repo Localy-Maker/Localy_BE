@@ -11,10 +11,12 @@ import org.example.localy.common.response.BaseResponse;
 import org.example.localy.dto.dailyFeedback.DailyFeedbackDto;
 import org.example.localy.dto.dailyFeedback.MonthlyEmotionDto;
 import org.example.localy.dto.dailyFeedback.WeeklyEmotionDto;
+import org.example.localy.entity.Users;
 import org.example.localy.service.DailyFeedbackService;
 import org.example.localy.service.MonthlyEmotionService;
 import org.example.localy.service.WeeklyFeedbackService;
 import org.example.localy.util.JwtUtil;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.DayOfWeek;
@@ -41,13 +43,12 @@ public class DailyFeedbackController {
     )
     @GetMapping("/day")
     public BaseResponse<DailyFeedbackDto> getDailyFeedback(
-            HttpServletRequest request
+            @AuthenticationPrincipal Users user
     ) {
         // date가 없으면 오늘 날짜 사용
         LocalDate targetDate = LocalDate.now();
 
-        String token = jwtUtil.getTokenFromHeader(request);
-        Long userId = jwtUtil.getUserIdFromToken(token);
+        Long userId = user.getId();
 
         if(userId!=null){
             log.info("일일 피드백 조회 - userId: {}, date: {}", userId, targetDate);
@@ -69,11 +70,10 @@ public class DailyFeedbackController {
     )
     @GetMapping("/week")
     public BaseResponse<WeeklyEmotionDto> getDailyFeedbackWeek(
-            HttpServletRequest request
+            @AuthenticationPrincipal Users user
     ) {
 
-        String token = jwtUtil.getTokenFromHeader(request);
-        Long userId = jwtUtil.getUserIdFromToken(token);
+        Long userId = user.getId();
 
         LocalDate targetStartDate = LocalDate.now().with(DayOfWeek.MONDAY);
 
@@ -96,12 +96,11 @@ public class DailyFeedbackController {
     )
     @GetMapping("/month/{yearMonth}")
     public BaseResponse<MonthlyEmotionDto> getDailyFeedbackMonth(
-            HttpServletRequest request,
+            @AuthenticationPrincipal Users user,
             @PathVariable String yearMonth
     ) {
 
-        String token = jwtUtil.getTokenFromHeader(request);
-        Long userId = jwtUtil.getUserIdFromToken(token);
+        Long userId = user.getId();
 
 
         if(userId!=null){
