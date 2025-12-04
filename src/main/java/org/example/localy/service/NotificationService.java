@@ -4,6 +4,8 @@ package org.example.localy.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import org.example.localy.common.response.BaseResponse;
+import org.example.localy.dto.NotificationDto;
 import org.example.localy.dto.admin.CreateAnnouncementRequest;
 import org.example.localy.entity.Notification;
 import org.example.localy.entity.NotificationRead;
@@ -16,9 +18,11 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.user.SimpUserRegistry;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -90,9 +94,42 @@ public class NotificationService {
                         unreadCounts
                 );
             }).start();*/
+
+            messagingTemplate.convertAndSend(
+                    "/topic/alarm/unreadCount/" + user.getId(),
+                    unreadCounts
+            );
         }
 
         messagingTemplate.convertAndSend("/topic/alarm/receiveNotice", dto);
 
+    }
+
+    @Transactional
+    public List<NotificationDto> readAllAlarm(Users user){
+        // 1️⃣ 해당 유저가 받은 공지 + 읽음 여부 조회 (날짜순)
+        List<NotificationRead> reads = notificationReadRepository
+                .findAllByUserOrderByNotificationCreatedAtDesc(user);
+
+        // 2️⃣ DTO로 변환
+        List<NotificationDto> notifications = reads.stream()
+                .map(nr -> new NotificationDto(
+                        nr.getNotification().getId(),
+                        nr.getNotification().getType(),
+                        nr.getNotification().getTitle(),
+                        nr.getNotification().getBody(),
+                        nr.getNotification().getCreatedAt(),
+                        nr.isRead()
+                ))
+                .collect(Collectors.toList());
+
+        // 3️⃣ 아직 읽지 않은 공지 읽음 처리
+        reads.stream()
+                .filter(nr -> !nr.isRead())
+                .forEach(NotificationRead::markAsRead);
+
+        redisTemplate.opsForValue().set("localy:alarm:unread:"+user.getId(),"0");
+
+        return notifications;
     }
 }
