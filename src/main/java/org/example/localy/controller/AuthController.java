@@ -13,6 +13,7 @@ import org.example.localy.subscriber.RedisSubscriber;
 import org.example.localy.subscriber.RedisSubscriberInitializer;
 import org.example.localy.util.JwtUtil;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.beans.factory.annotation.Value;
 
 @Tag(name = "Auth", description = "인증 관련 API")
 @RestController
@@ -25,6 +26,9 @@ public class AuthController {
     private final JwtUtil jwtUtil;
     private final RedisSubscriber redisSubscriber;
     private final RedisSubscriberInitializer subscriberInitializer;
+
+    @Value("${spring.security.oauth2.client.registration.google.client-id}")
+    private String googleClientId;
 
     @Operation(summary = "이메일 인증번호 요청", description = "회원가입 시 이메일 인증번호를 요청합니다.")
     @Tags({
@@ -44,6 +48,15 @@ public class AuthController {
 
         return BaseResponse.success("이메일 인증번호 전송 완료", response);
     }
+
+    @Operation(summary = "Google Client ID 조회", description = "Google OAuth를 위한 Client ID를 반환합니다.")
+    @GetMapping("/google/client-id")
+    public BaseResponse<ClientResponse> getGoogleClientId() {
+        ClientResponse response = new ClientResponse(googleClientId);
+        return BaseResponse.success("Google Client ID 조회 성공", response);
+    }
+
+    private record ClientResponse(String clientId) {}
 
     @Operation(summary = "이메일 인증번호 확인", description = "입력한 인증번호가 올바른지 확인합니다.")
     @Tags({
