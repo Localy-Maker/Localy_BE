@@ -26,6 +26,7 @@ public class JwtStompInterceptor implements ChannelInterceptor {
         log.info("[STOMP] preSend called, command={}, sessionAttributes={}",
                 accessor.getCommand(), accessor.getSessionAttributes());
 
+
         if (StompCommand.CONNECT.equals(accessor.getCommand())) {
             // 🔹 CONNECT 프레임 헤더에서 JWT 읽기
             String authHeader = accessor.getFirstNativeHeader("Authorization");
@@ -39,6 +40,10 @@ public class JwtStompInterceptor implements ChannelInterceptor {
                     String email = jwtUtil.getEmailFromToken(token);
 
                     accessor.setUser(new StompUser(userId, email));
+                    log.info("[STOMP] CONNECT JWT 검증 성공: userId={}, email={}", userId, email);
+
+                    // 🔹 여기서 Principal 등록 확인 로그 추가
+                    log.info("[STOMP] Principal 등록 완료: {}", accessor.getUser());
 
                     log.info("[STOMP] CONNECT JWT 검증 성공: userId={}, email={}", userId, email);
                 } catch (Exception e) {
