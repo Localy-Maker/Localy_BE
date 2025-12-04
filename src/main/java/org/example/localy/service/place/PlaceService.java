@@ -294,7 +294,7 @@ public class PlaceService {
     }
 
     //북마크 변환
-    private PlaceDto.BookmarkItem convertToBookmarkItem(Bookmark bookmark) {
+    public PlaceDto.BookmarkItem convertToBookmarkItem(Bookmark bookmark) {
         Place place = bookmark.getPlace();
 
         return PlaceDto.BookmarkItem.builder()
