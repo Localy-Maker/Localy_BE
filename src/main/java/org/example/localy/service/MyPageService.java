@@ -52,8 +52,8 @@ public class MyPageService {
             String verificationCode,
             MyPageDto.UpdateProfileRequest request
     ) {
-        // 이메일 인증번호 확인 (기존 EmailVerificationService 재사용)
-        emailVerificationService.verifyCode(email, verificationCode);
+        // 이메일 인증번호 확인
+        emailVerificationService.verifyAndConsumeCode(email, verificationCode);
 
         // 사용자 조회
         Users user = userRepository.findById(userId)

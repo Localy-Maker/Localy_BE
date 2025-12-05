@@ -221,7 +221,7 @@ public class AuthService {
     public AuthDto.PasswordResetResponse resetPassword(AuthDto.PasswordResetRequest request) {
         try {
             // 이메일 인증번호 확인
-            emailVerificationService.verifyCode(request.getEmail(), request.getCode());
+            emailVerificationService.verifyAndConsumeCode(request.getEmail(), request.getCode());
 
             // 사용자 조회
             Users user = userRepository.findByEmail(request.getEmail())

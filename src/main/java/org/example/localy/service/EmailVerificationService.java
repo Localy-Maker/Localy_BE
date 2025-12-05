@@ -43,8 +43,8 @@ public class EmailVerificationService {
         log.info("이메일 인증번호 전송 완료: {}", email);
     }
 
-    // 이메일 인증번호 확인
-    public void verifyCode(String email, String code) {
+    // 인증 코드의 유효성만 확인, 데이터 삭제x
+    public void checkCode(String email, String code) {
         String redisKey = EMAIL_VERIFICATION_PREFIX + email;
         String storedCode = redisTemplate.opsForValue().get(redisKey);
 
@@ -55,10 +55,16 @@ public class EmailVerificationService {
         if (!storedCode.equals(code)) {
             throw new CustomException(AuthErrorCode.EMAIL_VERIFICATION_CODE_MISMATCH);
         }
+    }
 
-        // 인증 성공 시 Redis에서 삭제
-        redisTemplate.delete(redisKey);
-        log.info("이메일 인증 성공: {}", email);
+    // 인증 코드 확인, 유효하면 Redis에서 삭제
+    public void verifyAndConsumeCode(String email, String code) {
+        // 먼저 코드를 확인합니다.
+        checkCode(email, code);
+
+        // 코드가 유효하면, 최종적으로 삭제(소모)합니다.
+        redisTemplate.delete(EMAIL_VERIFICATION_PREFIX + email);
+        log.info("이메일 인증 성공 및 코드 소모: {}", email);
     }
 
     // 6자리 랜덤 인증번호 생성
