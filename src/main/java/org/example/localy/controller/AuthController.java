@@ -67,7 +67,7 @@ public class AuthController {
     public BaseResponse<AuthDto.EmailVerificationResponse> confirmVerificationCode(
             @Valid @RequestBody AuthDto.EmailVerificationConfirm request
     ) {
-        emailVerificationService.verifyCode(request.getEmail(), request.getCode());
+        emailVerificationService.checkCode(request.getEmail(), request.getCode());
 
         AuthDto.EmailVerificationResponse response = AuthDto.EmailVerificationResponse.builder()
                 .verified(true)
