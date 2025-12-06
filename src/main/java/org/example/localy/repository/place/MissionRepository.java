@@ -6,6 +6,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -21,4 +23,8 @@ public interface MissionRepository extends JpaRepository<Mission, Long> {
 
     @Query("SELECT COUNT(m) FROM Mission m WHERE m.user = :user AND m.isCompleted = true AND m.expiresAt > :now")
     long countCompletedByUser(@Param("user") Users user, @Param("now") LocalDateTime now);
+
+    @Modifying
+    @Transactional
+    void deleteAllByUser(Users user);
 }

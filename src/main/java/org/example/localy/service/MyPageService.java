@@ -6,6 +6,12 @@ import org.example.localy.common.exception.CustomException;
 import org.example.localy.common.exception.errorCode.AuthErrorCode;
 import org.example.localy.dto.MyPageDto;
 import org.example.localy.entity.Users;
+import org.example.localy.repository.ChatBotRepository;
+import org.example.localy.repository.NotificationReadRepository;
+import org.example.localy.repository.EmotionDayResultRepository;
+import org.example.localy.repository.EmotionWindowResultRepository;
+import org.example.localy.repository.place.BookmarkRepository;
+import org.example.localy.repository.place.MissionRepository;
 import org.example.localy.repository.UserRepository;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -23,6 +29,13 @@ public class MyPageService {
     private final EmailVerificationService emailVerificationService;
     private final PasswordEncoder passwordEncoder;
     private final RedisTemplate<String, String> redisTemplate;
+
+    private final ChatBotRepository chatBotRepository;
+    private final MissionRepository missionRepository;
+    private final BookmarkRepository bookmarkRepository;
+    private final NotificationReadRepository notificationReadRepository;
+    private final EmotionDayResultRepository emotionDayResultRepository;
+    private final EmotionWindowResultRepository emotionWindowResultRepository;
 
     public String getEmailByUserId(Long userId) {
         Users user = userRepository.findById(userId)
@@ -120,6 +133,12 @@ public class MyPageService {
             String redisKey = REFRESH_TOKEN_PREFIX + userId;
             redisTemplate.delete(redisKey);
 
+            missionRepository.deleteAllByUser(user);
+            bookmarkRepository.deleteAllByUser(user);
+            notificationReadRepository.deleteAllByUser(user);
+            chatBotRepository.deleteAllByUserId(userId);
+            emotionDayResultRepository.deleteAllByUserId(userId);
+            emotionWindowResultRepository.deleteAllByUserId(userId);
             // 사용자 삭제
             userRepository.delete(user);
 
