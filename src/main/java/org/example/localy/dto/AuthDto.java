@@ -119,6 +119,9 @@ public class AuthDto {
 
         @Schema(description = "닉네임")
         private String nickname;
+
+        @Schema(description = "온보딩 완료 여부")
+        private Boolean onboardingCompleted;
     }
 
     @Getter

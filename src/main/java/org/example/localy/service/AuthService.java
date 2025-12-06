@@ -154,6 +154,7 @@ public class AuthService {
                     .userId(user.getId())
                     .email(user.getEmail())
                     .nickname(user.getNickname())
+                    .onboardingCompleted(user.getOnboardingCompleted())
                     .build();
 
         } catch (Exception e) {
