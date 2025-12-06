@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -62,4 +64,8 @@ public interface EmotionWindowResultRepository extends JpaRepository<EmotionWind
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end);
 
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM EmotionWindowResult e WHERE e.userId = :userId")
+    void deleteAllByUserId(@Param("userId") Long userId);
 }

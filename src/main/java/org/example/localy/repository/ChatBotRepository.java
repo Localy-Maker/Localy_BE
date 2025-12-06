@@ -81,4 +81,8 @@ public interface ChatBotRepository extends JpaRepository<ChatMessage, Long> {
                                 @Param("startOfDay") LocalDateTime startOfDay,
                                 @Param("endOfDay") LocalDateTime endOfDay);
 
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM ChatMessage c WHERE c.userId = :userId")
+    void deleteAllByUserId(@Param("userId") Long userId);
 }
