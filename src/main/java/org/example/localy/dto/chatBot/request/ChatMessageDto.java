@@ -10,6 +10,5 @@ import lombok.Setter;
 @Getter
 @Builder
 public class ChatMessageDto {
-    private Long userId;
     private String text;
 }
