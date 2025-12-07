@@ -50,8 +50,9 @@ public class GPTService {
 
         String prompt = String.format(
                 "User input: \"%s\"\n" +
-                        "Please respond in %s, in a friendly and persuasive tone, " +
-                        "and end with a follow-up question to continue the conversation.",
+                        "Please respond in %s, in a friendly and persuasive tone. " +
+                        "Make sure the entire response stays within 500 tokens. " +
+                        "Also, end with a follow-up question to continue the conversation.",
                 userMessage,
                 langName
         );
@@ -60,7 +61,7 @@ public class GPTService {
                 .model("gpt-3.5-turbo")
                 .messages(List.of(new ChatMessage("user", prompt)))
                 .temperature(0.7)
-                .maxTokens(150)
+                .maxTokens(500)
                 .build();
 
         ChatCompletionResult result = service.createChatCompletion(request);
