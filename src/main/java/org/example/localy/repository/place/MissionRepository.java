@@ -27,4 +27,9 @@ public interface MissionRepository extends JpaRepository<Mission, Long> {
     @Modifying
     @Transactional
     void deleteAllByUser(Users user);
+
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM Mission m WHERE m.expiresAt < :now")
+    int deleteExpiredMissions(@Param("now") LocalDateTime now);
 }
