@@ -21,25 +21,25 @@ public interface BookmarkRepository extends JpaRepository<Bookmark, Long> {
 
     boolean existsByUserAndPlace(Users user, Place place);
 
-    @Query("SELECT b FROM Bookmark b WHERE b.user = :user AND b.id < :lastBookmarkId ORDER BY b.createdAt DESC")
+    @Query("SELECT b FROM Bookmark b JOIN FETCH b.place p WHERE b.user = :user AND b.id < :lastBookmarkId ORDER BY b.createdAt DESC")
     List<Bookmark> findByUserAndIdLessThanOrderByCreatedAtDesc(
             @Param("user") Users user,
             @Param("lastBookmarkId") Long lastBookmarkId,
             Pageable pageable);
 
-    @Query("SELECT b FROM Bookmark b WHERE b.user = :user ORDER BY b.createdAt DESC")
+    @Query("SELECT b FROM Bookmark b JOIN FETCH b.place p WHERE b.user = :user ORDER BY b.createdAt DESC")
     List<Bookmark> findByUserOrderByCreatedAtDesc(@Param("user") Users user, Pageable pageable);
 
-    @Query("SELECT b FROM Bookmark b JOIN b.place p WHERE b.user = :user AND b.id < :lastBookmarkId ORDER BY p.bookmarkCount DESC, b.createdAt DESC")
+    @Query("SELECT b FROM Bookmark b JOIN FETCH b.place p WHERE b.user = :user AND b.id < :lastBookmarkId ORDER BY p.bookmarkCount DESC, b.createdAt DESC")
     List<Bookmark> findByUserAndIdLessThanOrderByPopularity(
             @Param("user") Users user,
             @Param("lastBookmarkId") Long lastBookmarkId,
             Pageable pageable);
 
-    @Query("SELECT b FROM Bookmark b JOIN b.place p WHERE b.user = :user ORDER BY p.bookmarkCount DESC, b.createdAt DESC")
+    @Query("SELECT b FROM Bookmark b JOIN FETCH b.place p WHERE b.user = :user ORDER BY p.bookmarkCount DESC, b.createdAt DESC")
     List<Bookmark> findByUserOrderByPopularity(@Param("user") Users user, Pageable pageable);
 
-    @Query("SELECT b FROM Bookmark b WHERE b.user = :user ORDER BY b.createdAt DESC")
+    @Query("SELECT b FROM Bookmark b JOIN FETCH b.place p WHERE b.user = :user ORDER BY b.createdAt DESC")
     List<Bookmark> findTop5ByUserOrderByCreatedAtDesc(@Param("user") Users user, Pageable pageable);
 
     long countByUser(Users user);
