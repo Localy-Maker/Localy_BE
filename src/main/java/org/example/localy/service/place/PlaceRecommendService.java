@@ -38,10 +38,6 @@ public class PlaceRecommendService {
     public RecommendDto.RecommendResponse recommendPlaces(Users user, Double latitude, Double longitude) {
         RecommendDto.EmotionData emotionData = emotionDataService.getCurrentEmotion(user);
 
-        if (emotionData == null || emotionData.getEmotions() == null) {
-            throw new CustomException(PlaceErrorCode.EMOTION_DATA_NOT_FOUND);
-        }
-
         if (Boolean.TRUE.equals(emotionData.getIsHomesickMode())) {
             log.info("고향 기반 장소 추천 시작: userId={}", user.getId());
             return recommendHomesickPlaces(user, latitude, longitude, emotionData);
