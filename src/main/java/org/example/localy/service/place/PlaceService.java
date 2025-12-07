@@ -20,6 +20,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.redis.core.RedisTemplate;
+import java.util.Objects;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -156,6 +157,7 @@ public class PlaceService {
 
         return bookmarks.stream()
                 .map(this::convertToBookmarkItem)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
     }
 
@@ -227,6 +229,7 @@ public class PlaceService {
         // DTO 변환
         List<PlaceDto.BookmarkItem> bookmarkItems = bookmarks.stream()
                 .map(this::convertToBookmarkItem)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
 
         long totalElements = bookmarkRepository.countByUser(user);
@@ -296,6 +299,11 @@ public class PlaceService {
     //북마크 변환
     public PlaceDto.BookmarkItem convertToBookmarkItem(Bookmark bookmark) {
         Place place = bookmark.getPlace();
+
+        if (place == null) {
+            log.warn("북마크 ID {}에 연결된 장소(Place) 정보가 null입니다. 이 항목은 건너뜁니다.", bookmark.getId());
+            return null;
+        }
 
         return PlaceDto.BookmarkItem.builder()
                 .bookmarkId(bookmark.getId())
