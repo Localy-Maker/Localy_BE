@@ -19,6 +19,7 @@ public class RecommendDto {
         private String dominantEmotion;
         private List<ConversationItem> conversationHistory;
         private LocationInfo location;
+        private int emotionScore;
         private Boolean isHomesickMode;
         private String userNationality;
         private List<AvailablePlace> availablePlaces;
@@ -99,6 +100,7 @@ public class RecommendDto {
     public static class EmotionData {
         private Map<String, Double> emotions;
         private String dominantEmotion;
+        private int emotionScore;
         private LocalDateTime lastUpdated;
         private Boolean isHomesickMode;
         private LocalDateTime homesickActivatedAt;
