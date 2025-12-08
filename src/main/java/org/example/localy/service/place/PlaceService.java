@@ -83,13 +83,17 @@ public class PlaceService {
     private PlaceDto.MissionBanner getMissionBanner(Users user) {
         if (user == null) {
             return PlaceDto.MissionBanner.builder()
-                    .emotionKeyword(getEmotionKeyword("default")) // 기본 키워드
+                    .emotionKeyword(getEmotionKeyword(50)) // 기본값 50점 (중립)
                     .totalMissions(0)
                     .completedMissions(0)
                     .progressPercent(0)
                     .build();
         }
+
+        // EmotionDataService가 Score를 반환한다고 가정
         RecommendDto.EmotionData emotionData = emotionDataService.getCurrentEmotion(user);
+
+        int currentEmotionScore = emotionData.getEmotionScore();
 
         LocalDateTime now = LocalDateTime.now();
         long totalMissions = missionRepository.countActiveByUser(user, now);
@@ -100,7 +104,7 @@ public class PlaceService {
                 : 0;
 
         return PlaceDto.MissionBanner.builder()
-                .emotionKeyword(getEmotionKeyword(emotionData.getDominantEmotion()))
+                .emotionKeyword(getEmotionKeyword(currentEmotionScore)) // 수치 기반 키워드 사용
                 .totalMissions((int) totalMissions)
                 .completedMissions((int) completedMissions)
                 .progressPercent(progressPercent)
@@ -318,16 +322,19 @@ public class PlaceService {
                 .build();
     }
 
-    // 감정 키워드 변환
-    private String getEmotionKeyword(String emotion) {
-        return switch (emotion) {
-            case "depressed" -> "우울";
-            case "joy" -> "기쁨";
-            case "sadness" -> "슬픔";
-            case "anxiety" -> "불안";
-            case "neutral" -> "중립";
-            case "anger" -> "분노";
-            default -> "중립";
-        };
+    private String getEmotionKeyword(int score) {
+        if (score >= 84) {
+            return "매우 긍정적"; // 84~100
+        } else if (score >= 67) {
+            return "긍정적"; // 67~83
+        } else if (score >= 51) {
+            return "약간 긍정적"; // 51~66
+        } else if (score >= 34) {
+            return "중립"; // 34~50
+        } else if (score >= 17) {
+            return "부정적"; // 17~33
+        } else {
+            return "매우 부정적"; // 0~16
+        }
     }
 }

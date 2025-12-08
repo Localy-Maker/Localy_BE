@@ -36,6 +36,7 @@ public class PlaceRecommendService {
     // 감정 기반 장소 추천
     @Transactional
     public RecommendDto.RecommendResponse recommendPlaces(Users user, Double latitude, Double longitude) {
+        // EmotionDataService가 Score(0-100)와 DominantEmotion(GPT가 뽑은 세부 감정 단어)를 반환한다고 가정
         RecommendDto.EmotionData emotionData = emotionDataService.getCurrentEmotion(user);
 
         if (Boolean.TRUE.equals(emotionData.getIsHomesickMode())) {
@@ -43,8 +44,9 @@ public class PlaceRecommendService {
             return recommendHomesickPlaces(user, latitude, longitude, emotionData);
         }
 
-        log.info("일반 감정 기반 장소 추천 시작: userId={}, emotion={}",
-                user.getId(), emotionData.getDominantEmotion());
+        // dominantEmotion은 이제 GPT가 뽑은 세부 감정 단어이거나, Score에 따른 기존 감정 키워드 중 하나임
+        log.info("일반 감정 기반 장소 추천 시작: userId={}, emotionScore={}",
+                user.getId(), emotionData.getEmotionScore());
         return recommendEmotionBasedPlaces(user, latitude, longitude, emotionData);
     }
 
@@ -108,7 +110,8 @@ public class PlaceRecommendService {
     private RecommendDto.RecommendResponse recommendEmotionBasedPlaces(
             Users user, Double latitude, Double longitude, RecommendDto.EmotionData emotionData) {
 
-        String dominantEmotion = emotionData.getDominantEmotion();
+        // dominantEmotion은 이제 GPT가 대화에서 추출한 가장 가까운 '세부 감정 단어'일 수 있습니다.
+        String dominantEmotionKeyword = emotionData.getDominantEmotion();
 
         List<TourApiDto.LocationBasedItem> apiPlaces =
                 tourApiService.getLocationBasedList(latitude, longitude, 5000, null);
@@ -134,7 +137,7 @@ public class PlaceRecommendService {
 
         GPTService.PlaceRecommendationResult aiResult =
                 gptService.getRecommendedPlacesByEmotion(
-                        allPlaces, dominantEmotion, user.getInterests());
+                        allPlaces, dominantEmotionKeyword, user.getInterests());
 
         List<GPTService.PlaceRecommendationResult.RecommendedPlace> aiRecommendedList =
                 aiResult.getRecommendedPlaces();
@@ -152,7 +155,6 @@ public class PlaceRecommendService {
                 .map(placeMap::get)
                 .collect(Collectors.toList());
 
-        // 미션 생성
         List<RecommendDto.MissionItem> missions = List.of();
 
         // 응답 DTO 매핑
@@ -172,9 +174,7 @@ public class PlaceRecommendService {
         List<RecommendDto.RecommendedPlace> result = recommendedPlaces.stream()
                 .map(place -> RecommendDto.RecommendedPlace.builder()
                         .placeId(place.getId())
-                        // GPT에서 받은 이유가 없을 경우 대체 이유 사용
-                        .reason(reasonMap.getOrDefault(place.getId(), generateRecommendReason(dominantEmotion, place.getCategory())))
-                        // GPT에서 받은 점수가 없을 경우 대체 점수 사용
+                        .reason(reasonMap.getOrDefault(place.getId(), generateRecommendReason(dominantEmotionKeyword, place.getCategory())))
                         .matchScore(scoreMap.getOrDefault(place.getId(), 0.85))
                         .build())
                 .collect(Collectors.toList());
@@ -260,7 +260,8 @@ public class PlaceRecommendService {
     }
 
     // 테스트용
-    private String generateRecommendReason(String emotion, String category) {
-        return String.format("%s에 어울리는 장소입니다", EmotionConstants.toKorean(emotion));
+    // 세부 감정 단어를 사용하여 추천 이유 생성
+    private String generateRecommendReason(String emotionKeyword, String category) {
+        return String.format("%s 느낌에 어울리는 장소입니다", emotionKeyword);
     }
 }

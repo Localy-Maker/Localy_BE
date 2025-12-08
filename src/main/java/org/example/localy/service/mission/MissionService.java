@@ -48,10 +48,10 @@ public class MissionService {
 
     @Transactional
     public List<RecommendDto.MissionItem> createMissionsForRecommendedPlaces(
-            Users user, List<Place> recommendedPlaces, String emotion) {
+            Users user, List<Place> recommendedPlaces, String emotionKeyword) {
 
-        log.info("미션 생성 시작: userId={}, emotion={}, places={}",
-                user.getId(), emotion, recommendedPlaces.size());
+        log.info("미션 생성 시작: userId={}, emotionKeyword={}, places={}",
+                user.getId(), emotionKeyword, recommendedPlaces.size());
 
         LocalDateTime now = LocalDateTime.now();
         List<Mission> activeMissions = missionRepository.findActiveByUser(user, now); // 중복 체크를 위해 활성 미션 조회
@@ -77,7 +77,7 @@ public class MissionService {
             // 2. GPT를 호출하여 미션 제목과 설명 생성
             GPTService.MissionCreationResult missionContent =
                     gptService.createMissionContent(
-                            place.getTitle(), place.getCategory(), EmotionConstants.toKorean(emotion));
+                            place.getTitle(), place.getCategory(), emotionKeyword);
 
             // 3. Mission 엔티티 생성
             Mission newMission = Mission.builder()
@@ -86,7 +86,7 @@ public class MissionService {
                     .title(missionContent.getTitle())
                     .description(missionContent.getDescription())
                     .points(DEFAULT_MISSION_POINTS)
-                    .emotion(emotion)
+                    .emotion(emotionKeyword) // GPT가 뽑은 세부 감정 단어를 저장
                     .isCompleted(false)
                     .createdAt(now)
                     .expiresAt(now.plusHours(24))
@@ -147,6 +147,7 @@ public class MissionService {
             Users user, Long missionId, Double userLat, Double userLon) {
 
         if (userLat != null && userLon != null) {
+            // 위치 정보가 있을 경우 미션 생성/누적 로직 실행 (감정 변화 체크)
             processMissionGenerationAndAccumulation(user, userLat, userLon);
         } else {
             log.warn("미션 상세 조회 시 위치 정보가 누락되어 미션 생성/누적 로직을 건너뜁니다.");
@@ -217,22 +218,23 @@ public class MissionService {
                 .collect(Collectors.toList());
 
         RecommendDto.EmotionData currentEmotionData = emotionDataService.getCurrentEmotion(user);
-        String currentDominantEmotion = currentEmotionData.getDominantEmotion();
+
+        int currentEmotionScore = currentEmotionData.getEmotionScore();
+        String currentDominantEmotionKeyword = currentEmotionData.getDominantEmotion(); // GPT가 뽑은 세부 감정 단어
 
         boolean needsNewMissionSet = activeMissions.isEmpty();
         boolean hasEmotionChanged = false;
-        String existingMissionEmotion = null;
 
         if (!activeMissions.isEmpty()) {
-            // 가장 최근 생성된 미션의 감정을 기준으로 삼음 (MissionRepository 쿼리는 createdAt DESC로 정렬됨)
-            existingMissionEmotion = activeMissions.get(0).getEmotion();
+            // 현재 활성 미션의 감정 키워드와 GPT가 뽑은 세부 감정 단어가 다르면 변화 발생으로 간주
+            String existingMissionEmotionKeyword = activeMissions.get(0).getEmotion();
 
-            // 감정 변화 체크: 기존 미션의 감정과 현재 감정이 다르면 변화 발생
-            if (!existingMissionEmotion.equalsIgnoreCase(currentDominantEmotion)) {
+            if (!existingMissionEmotionKeyword.equalsIgnoreCase(currentDominantEmotionKeyword)) {
                 hasEmotionChanged = true;
-                log.info("미션 감정 변화 감지: 기존 감정={}, 현재 감정={}", existingMissionEmotion, currentDominantEmotion);
+                log.info("미션 감정 키워드 변화 감지: 기존 키워드={}, 현재 키워드={}",
+                        existingMissionEmotionKeyword, currentDominantEmotionKeyword);
             } else {
-                log.info("감정 변화 없음. 미션 생성을 건너뜁니다. emotion={}", existingMissionEmotion);
+                log.info("감정 키워드 변화 없음. 미션 생성을 건너뜁니다. keyword={}", existingMissionEmotionKeyword);
                 return;
             }
         }
@@ -252,7 +254,7 @@ public class MissionService {
 
             if (!recommendedPlaceEntities.isEmpty()) {
                 createMissionsForRecommendedPlaces(
-                        user, recommendedPlaceEntities, currentDominantEmotion
+                        user, recommendedPlaceEntities, currentDominantEmotionKeyword
                 );
             } else {
                 log.warn("장소 추천 실패: 미션 생성을 건너뜁니다.");
@@ -331,7 +333,7 @@ public class MissionService {
                 .points(mission.getPoints())
                 .isCompleted(mission.getIsCompleted())
                 .isNew(isNew)
-                .emotion(EmotionConstants.toKorean(mission.getEmotion()))
+                .emotion(mission.getEmotion()) // 세부 감정 단어를 그대로 사용
                 .build();
     }
 
