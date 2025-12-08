@@ -62,7 +62,7 @@ public class PlaceService {
         // 미션 배너 데이터
         PlaceDto.MissionBanner missionBanner = getMissionBanner(user);
 
-        // [복원] 감정 기반 추천 장소 (미션 생성 로직 포함)
+        // 감정 기반 추천 장소 (미션 생성 로직 포함)
         List<PlaceDto.PlaceSimple> recommendedPlaces = getRecommendedPlaces(user, latitude, longitude);
 
         // 미션 장소 (활성 미션의 장소들)

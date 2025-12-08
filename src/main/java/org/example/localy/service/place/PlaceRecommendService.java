@@ -78,8 +78,7 @@ public class PlaceRecommendService {
             if (recommendedPlaces.size() >= 5) break;
         }
 
-        List<RecommendDto.MissionItem> missions =
-                missionService.createMissionsForRecommendedPlaces(user, recommendedPlaces, "loneliness");
+        List<RecommendDto.MissionItem> missions = List.of();
 
         // 추천 이유 개인화
         String personalizedReason = (baseNationalityKeyword.equals("아시아") || baseNationalityKeyword.equals("기타"))
@@ -154,8 +153,7 @@ public class PlaceRecommendService {
                 .collect(Collectors.toList());
 
         // 미션 생성
-        List<RecommendDto.MissionItem> missions = missionService.createMissionsForRecommendedPlaces(
-                user, recommendedPlaces, dominantEmotion);
+        List<RecommendDto.MissionItem> missions = List.of();
 
         // 응답 DTO 매핑
         Map<Long, String> reasonMap = aiRecommendedList.stream()

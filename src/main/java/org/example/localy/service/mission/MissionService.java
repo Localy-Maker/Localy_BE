@@ -18,10 +18,14 @@ import org.example.localy.service.Chat.GPTService;
 import org.example.localy.util.DistanceCalculator;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.example.localy.repository.place.PlaceRepository;
+import org.example.localy.service.place.EmotionDataService;
+import org.example.localy.service.place.PlaceRecommendService;
 
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -33,11 +37,14 @@ public class MissionService {
     private final UserRepository userRepository;
     private final PlaceImageRepository placeImageRepository;
     private final GPTService gptService;
+    private final PlaceRecommendService recommendService;
+    private final EmotionDataService emotionDataService;
+    private final PlaceRepository placeRepository;
 
     private static final double VERIFICATION_RADIUS_KM = 0.05; // 50m
     private static final long NEW_TAG_HOURS = 48; // 48시간 이내 생성된 미션
     private static final int DEFAULT_MISSION_POINTS = 10;
-    //private static final int DEFAULT_MISSION_POINTS = 10;
+    private static final int MAX_MISSIONS_PER_REQUEST = 2;
 
     @Transactional
     public List<RecommendDto.MissionItem> createMissionsForRecommendedPlaces(
@@ -53,6 +60,11 @@ public class MissionService {
 
         // 1. 추천 장소별 미션 생성 시도
         for (Place place : recommendedPlaces) {
+
+            if (newMissions.size() >= MAX_MISSIONS_PER_REQUEST) {
+                break;
+            }
+
             // 이미 이 장소에 대해 활성/미완료 미션이 있는지 확인 (중복 생성 방지)
             boolean alreadyHasMission = activeMissions.stream()
                     .anyMatch(m -> m.getPlace().getId().equals(place.getId()) && !m.getIsCompleted());
@@ -134,6 +146,12 @@ public class MissionService {
     public MissionDto.MissionDetailResponse getMissionDetail(
             Users user, Long missionId, Double userLat, Double userLon) {
 
+        if (userLat != null && userLon != null) {
+            processMissionGenerationAndAccumulation(user, userLat, userLon);
+        } else {
+            log.warn("미션 상세 조회 시 위치 정보가 누락되어 미션 생성/누적 로직을 건너뜁니다.");
+        }
+
         Mission mission = missionRepository.findById(missionId)
                 .orElseThrow(() -> new CustomException(MissionErrorCode.MISSION_NOT_FOUND));
 
@@ -187,6 +205,59 @@ public class MissionService {
                 .canVerify(canVerify)
                 .distance(distance != null ? DistanceCalculator.roundDistance(distance) : null)
                 .build();
+    }
+
+    @Transactional
+    public void processMissionGenerationAndAccumulation(Users user, Double userLat, Double userLon) {
+        LocalDateTime now = LocalDateTime.now();
+
+        // 1. 현재 활성 미션 및 감정 상태 조회
+        List<Mission> activeMissions = missionRepository.findActiveByUser(user, now).stream()
+                .filter(m -> !m.getIsCompleted())
+                .collect(Collectors.toList());
+
+        RecommendDto.EmotionData currentEmotionData = emotionDataService.getCurrentEmotion(user);
+        String currentDominantEmotion = currentEmotionData.getDominantEmotion();
+
+        boolean needsNewMissionSet = activeMissions.isEmpty();
+        boolean hasEmotionChanged = false;
+        String existingMissionEmotion = null;
+
+        if (!activeMissions.isEmpty()) {
+            // 가장 최근 생성된 미션의 감정을 기준으로 삼음 (MissionRepository 쿼리는 createdAt DESC로 정렬됨)
+            existingMissionEmotion = activeMissions.get(0).getEmotion();
+
+            // 감정 변화 체크: 기존 미션의 감정과 현재 감정이 다르면 변화 발생
+            if (!existingMissionEmotion.equalsIgnoreCase(currentDominantEmotion)) {
+                hasEmotionChanged = true;
+                log.info("미션 감정 변화 감지: 기존 감정={}, 현재 감정={}", existingMissionEmotion, currentDominantEmotion);
+            } else {
+                log.info("감정 변화 없음. 미션 생성을 건너뜁니다. emotion={}", existingMissionEmotion);
+                return;
+            }
+        }
+
+        // 2. 미션 생성/누적 조건 확인 및 실행
+        if (needsNewMissionSet || hasEmotionChanged) {
+            log.info("미션 생성 조건 충족: isNewSet={}, isChanged={}", needsNewMissionSet, hasEmotionChanged);
+
+            // 현재 위치 주변 장소 추천 목록을 가져옵니다.
+            RecommendDto.RecommendResponse recommendation =
+                    recommendService.recommendPlaces(user, userLat, userLon);
+
+            List<Place> recommendedPlaceEntities = recommendation.getRecommendedPlaces().stream()
+                    .map(rec -> placeRepository.findById(rec.getPlaceId()).orElse(null))
+                    .filter(Objects::nonNull)
+                    .toList();
+
+            if (!recommendedPlaceEntities.isEmpty()) {
+                createMissionsForRecommendedPlaces(
+                        user, recommendedPlaceEntities, currentDominantEmotion
+                );
+            } else {
+                log.warn("장소 추천 실패: 미션 생성을 건너뜁니다.");
+            }
+        }
     }
 
     // 미션 인증
