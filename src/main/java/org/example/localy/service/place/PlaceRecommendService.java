@@ -194,6 +194,11 @@ public class PlaceRecommendService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Place saveOrUpdatePlace(TourApiDto.LocationBasedItem apiPlace) {
+        if (apiPlace.getContentid() == null || apiPlace.getContentid().isEmpty()) {
+            log.warn("TourAPI 응답에서 contentId가 누락되어 장소 저장을 건너뜁니다. Title: {}", apiPlace.getTitle());
+            throw new CustomException(PlaceErrorCode.TOUR_API_ERROR); // 유효하지 않은 데이터 예외 던지기
+        }
+
         Optional<Place> existingPlace = placeRepository.findByContentId(apiPlace.getContentid());
 
         if (existingPlace.isPresent()) {

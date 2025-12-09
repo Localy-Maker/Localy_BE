@@ -65,7 +65,7 @@ public class PlaceService {
         PlaceDto.MissionBanner missionBanner = getMissionBanner(user);
 
         // 감정 기반 추천 장소 (미션 생성 로직 포함)
-        missionService.processMissionGenerationAndAccumulation(user, latitude, longitude);
+        //missionService.processMissionGenerationAndAccumulation(user, latitude, longitude);
 
         // 감정 기반 추천 장소
         List<PlaceDto.PlaceSimple> recommendedPlaces = getRecommendedPlaces(user, latitude, longitude);
