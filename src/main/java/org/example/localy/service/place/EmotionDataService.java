@@ -48,13 +48,26 @@ public class EmotionDataService {
             log.info("그리움 모드 활성 상태: userId={}", user.getId());
         }
 
-        // 감정 데이터 조회
-        Map<String, Double> emotions = getEmotionsFromRedis(emotionKey);
-        String dominantEmotion = findDominantEmotion(emotions);
+        String emotionScoreString = redisTemplate.opsForValue().get(emotionKey);
+        int emotionScore = 50;
+        Map<String, Double> emotions = getDefaultEmotions();
+        String dominantEmotion = "neutral";
+
+        if (emotionScoreString != null) {
+            try {
+                emotionScore = Integer.parseInt(emotionScoreString);
+                emotions = convertScoreToEmotionMap(emotionScore);
+                dominantEmotion = findDominantEmotion(emotions);
+            } catch (NumberFormatException e) {
+                log.error("Redis emotion score is not a valid number: {}", emotionScoreString);
+                // 파싱 실패 시 기본값 유지
+            }
+        }
 
         return RecommendDto.EmotionData.builder()
                 .emotions(emotions)
                 .dominantEmotion(dominantEmotion)
+                .emotionScore(emotionScore)
                 .lastUpdated(LocalDateTime.now())
                 .isHomesickMode(isHomesickMode)
                 .homesickActivatedAt(homesickActivatedAt)
