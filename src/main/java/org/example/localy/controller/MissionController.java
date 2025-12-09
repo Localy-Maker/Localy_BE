@@ -20,12 +20,14 @@ public class MissionController {
 
     private final MissionService missionService;
 
-    @Operation(summary = "미션 홈 조회", description = "포인트 정보와 미션 목록을 조회합니다.")
+    @Operation(summary = "미션 홈 조회", description = "포인트 정보와 미션 목록을 조회합니다. 위치 정보를 포함하면 감정 변화에 따라 새로운 미션을 생성합니다.")
     @GetMapping
     public ResponseEntity<BaseResponse<MissionDto.MissionHomeResponse>> getMissionHome(
-            @AuthenticationPrincipal Users user) {
+            @AuthenticationPrincipal Users user,
+            @RequestParam(required = false) Double latitude,
+            @RequestParam(required = false) Double longitude) {
 
-        MissionDto.MissionHomeResponse response = missionService.getMissionHome(user);
+        MissionDto.MissionHomeResponse response = missionService.getMissionHome(user, latitude, longitude);
         return ResponseEntity.ok(BaseResponse.success("미션 홈 조회 성공", response));
     }
 

@@ -45,6 +45,7 @@ public class MissionService {
     private static final long NEW_TAG_HOURS = 48; // 48시간 이내 생성된 미션
     private static final int DEFAULT_MISSION_POINTS = 10;
     private static final int MAX_MISSIONS_PER_REQUEST = 2;
+    private static final long ACTIVE_MISSION_HOURS = 24; // 활성 미션 기준: 24시간
 
     @Transactional
     public List<RecommendDto.MissionItem> createMissionsForRecommendedPlaces(
@@ -54,39 +55,38 @@ public class MissionService {
                 user.getId(), emotionKeyword, recommendedPlaces.size());
 
         LocalDateTime now = LocalDateTime.now();
-        List<Mission> activeMissions = missionRepository.findActiveByUser(user, now); // 중복 체크를 위해 활성 미션 조회
+        List<Mission> activeMissions = missionRepository.findActiveByUser(user, now);
 
         List<Mission> newMissions = new java.util.ArrayList<>();
 
-        // 1. 추천 장소별 미션 생성 시도
         for (Place place : recommendedPlaces) {
-
             if (newMissions.size() >= MAX_MISSIONS_PER_REQUEST) {
                 break;
             }
 
-            // 이미 이 장소에 대해 활성/미완료 미션이 있는지 확인 (중복 생성 방지)
+            // 동일한 감정 + 장소 조합의 미완료 미션이 있는지 확인
             boolean alreadyHasMission = activeMissions.stream()
-                    .anyMatch(m -> m.getPlace().getId().equals(place.getId()) && !m.getIsCompleted());
+                    .anyMatch(m -> m.getPlace().getId().equals(place.getId())
+                            && m.getEmotion().equalsIgnoreCase(emotionKeyword)
+                            && !m.getIsCompleted());
 
             if (alreadyHasMission) {
-                log.info("장소 미션이 이미 존재하여 건너뜁니다: placeId={}", place.getId());
+                log.info("동일 감정+장소 미션이 이미 존재하여 건너뜁니다: placeId={}, emotion={}",
+                        place.getId(), emotionKeyword);
                 continue;
             }
 
-            // 2. GPT를 호출하여 미션 제목과 설명 생성
             GPTService.MissionCreationResult missionContent =
                     gptService.createMissionContent(
                             place.getTitle(), place.getCategory(), emotionKeyword);
 
-            // 3. Mission 엔티티 생성
             Mission newMission = Mission.builder()
                     .user(user)
                     .place(place)
                     .title(missionContent.getTitle())
                     .description(missionContent.getDescription())
                     .points(DEFAULT_MISSION_POINTS)
-                    .emotion(emotionKeyword) // GPT가 뽑은 세부 감정 단어를 저장
+                    .emotion(emotionKeyword)
                     .isCompleted(false)
                     .createdAt(now)
                     .expiresAt(now.plusHours(24))
@@ -98,7 +98,6 @@ public class MissionService {
         missionRepository.saveAll(newMissions);
         log.info("미션 생성 완료. 총 {}개의 미션이 새로 생성되었습니다.", newMissions.size());
 
-        // 4. 생성된 미션을 RecommendDto.MissionItem으로 변환
         return newMissions.stream()
                 .map(m -> RecommendDto.MissionItem.builder()
                         .placeId(m.getPlace().getId())
@@ -109,10 +108,29 @@ public class MissionService {
                         .build())
                 .collect(Collectors.toList());
     }
-    // 미션 홈 조회
-    @Transactional(readOnly = true)
+
+    // 미션 홈 조회 - 위치 정보 없이 호출 (오버로딩)
+    @Transactional
     public MissionDto.MissionHomeResponse getMissionHome(Users user) {
+        return getMissionHome(user, null, null);
+    }
+
+    // 미션 홈 조회 - 여기서 미션 생성 로직 호출
+    @Transactional
+    public MissionDto.MissionHomeResponse getMissionHome(Users user, Double userLat, Double userLon) {
         LocalDateTime now = LocalDateTime.now();
+
+        // 위치 정보가 있으면 미션 생성/누적 로직 실행
+        if (userLat != null && userLon != null) {
+            try {
+                processMissionGenerationAndAccumulation(user, userLat, userLon);
+            } catch (Exception e) {
+                log.error("미션 생성 중 오류 발생: userId={}", user.getId(), e);
+                // 오류가 발생해도 기존 미션 목록은 반환
+            }
+        } else {
+            log.warn("미션 홈 조회 시 위치 정보가 누락되어 미션 생성을 건너뜁니다.");
+        }
 
         // 포인트 정보
         MissionDto.PointInfo pointInfo = MissionDto.PointInfo.builder()
@@ -141,29 +159,20 @@ public class MissionService {
                 .build();
     }
 
-    // 미션 상세 조회
+    // 미션 상세 조회 - 여기서는 미션 생성 로직 제거
     @Transactional(readOnly = true)
     public MissionDto.MissionDetailResponse getMissionDetail(
             Users user, Long missionId, Double userLat, Double userLon) {
 
-        if (userLat != null && userLon != null) {
-            // 위치 정보가 있을 경우 미션 생성/누적 로직 실행 (감정 변화 체크)
-            processMissionGenerationAndAccumulation(user, userLat, userLon);
-        } else {
-            log.warn("미션 상세 조회 시 위치 정보가 누락되어 미션 생성/누적 로직을 건너뜁니다.");
-        }
-
         Mission mission = missionRepository.findById(missionId)
                 .orElseThrow(() -> new CustomException(MissionErrorCode.MISSION_NOT_FOUND));
 
-        // 본인 미션 확인
         if (!mission.getUser().getId().equals(user.getId())) {
             throw new CustomException(MissionErrorCode.MISSION_NOT_OWNER);
         }
 
         Place place = mission.getPlace();
 
-        // 거리 계산
         Double distance = null;
         Boolean canVerify = false;
 
@@ -173,14 +182,12 @@ public class MissionService {
             canVerify = distance <= VERIFICATION_RADIUS_KM && !mission.getIsCompleted() && !mission.isExpired();
         }
 
-        // 장소 이미지 조회 (최대 3개)
         List<PlaceImage> images = placeImageRepository.findByPlaceOrderByDisplayOrder(place);
         List<String> imageUrls = images.stream()
                 .limit(3)
                 .map(PlaceImage::getImageUrl)
                 .collect(Collectors.toList());
 
-        // 카카오맵 URL 생성
         String kakaoMapUrl = generateKakaoMapUrl(place);
 
         MissionDto.PlaceInfo placeInfo = MissionDto.PlaceInfo.builder()
@@ -212,52 +219,61 @@ public class MissionService {
     public void processMissionGenerationAndAccumulation(Users user, Double userLat, Double userLon) {
         LocalDateTime now = LocalDateTime.now();
 
-        // 1. 현재 활성 미션 및 감정 상태 조회
+        // 1. 현재 활성 미션 조회 (생성 후 24시간 이내, 미완료)
         List<Mission> activeMissions = missionRepository.findActiveByUser(user, now).stream()
                 .filter(m -> !m.getIsCompleted())
+                .filter(m -> ChronoUnit.HOURS.between(m.getCreatedAt(), now) < ACTIVE_MISSION_HOURS)
                 .collect(Collectors.toList());
 
+        // 2. 현재 감정 데이터 조회
         RecommendDto.EmotionData currentEmotionData = emotionDataService.getCurrentEmotion(user);
+        String currentDominantEmotionKeyword = currentEmotionData.getDominantEmotion();
 
-        int currentEmotionScore = currentEmotionData.getEmotionScore();
-        String currentDominantEmotionKeyword = currentEmotionData.getDominantEmotion(); // GPT가 뽑은 세부 감정 단어
+        log.info("미션 생성 체크: userId={}, 활성미션수={}, 현재감정={}",
+                user.getId(), activeMissions.size(), currentDominantEmotionKeyword);
 
-        boolean needsNewMissionSet = activeMissions.isEmpty();
-        boolean hasEmotionChanged = false;
+        // 3. 미션 생성 조건 판단
+        boolean shouldCreateMission = false;
 
-        if (!activeMissions.isEmpty()) {
-            // 현재 활성 미션의 감정 키워드와 GPT가 뽑은 세부 감정 단어가 다르면 변화 발생으로 간주
+        if (activeMissions.isEmpty()) {
+            // 활성 미션이 없으면 무조건 생성
+            log.info("활성 미션이 없어 새 미션을 생성합니다.");
+            shouldCreateMission = true;
+        } else {
+            // 활성 미션이 있으면 감정 변화 체크
             String existingMissionEmotionKeyword = activeMissions.get(0).getEmotion();
 
             if (!existingMissionEmotionKeyword.equalsIgnoreCase(currentDominantEmotionKeyword)) {
-                hasEmotionChanged = true;
-                log.info("미션 감정 키워드 변화 감지: 기존 키워드={}, 현재 키워드={}",
+                log.info("감정 변화 감지: 기존={}, 현재={} -> 누적 생성",
                         existingMissionEmotionKeyword, currentDominantEmotionKeyword);
+                shouldCreateMission = true;
             } else {
-                log.info("감정 키워드 변화 없음. 미션 생성을 건너뜁니다. keyword={}", existingMissionEmotionKeyword);
-                return;
+                log.info("감정 변화 없음. 기존 미션 유지. emotion={}", existingMissionEmotionKeyword);
+                shouldCreateMission = false;
             }
         }
 
-        // 2. 미션 생성/누적 조건 확인 및 실행
-        if (needsNewMissionSet || hasEmotionChanged) {
-            log.info("미션 생성 조건 충족: isNewSet={}, isChanged={}", needsNewMissionSet, hasEmotionChanged);
+        // 4. 미션 생성 실행
+        if (shouldCreateMission) {
+            try {
+                RecommendDto.RecommendResponse recommendation =
+                        recommendService.recommendPlaces(user, userLat, userLon);
 
-            // 현재 위치 주변 장소 추천 목록을 가져옵니다.
-            RecommendDto.RecommendResponse recommendation =
-                    recommendService.recommendPlaces(user, userLat, userLon);
+                List<Place> recommendedPlaceEntities = recommendation.getRecommendedPlaces().stream()
+                        .map(rec -> placeRepository.findById(rec.getPlaceId()).orElse(null))
+                        .filter(Objects::nonNull)
+                        .toList();
 
-            List<Place> recommendedPlaceEntities = recommendation.getRecommendedPlaces().stream()
-                    .map(rec -> placeRepository.findById(rec.getPlaceId()).orElse(null))
-                    .filter(Objects::nonNull)
-                    .toList();
-
-            if (!recommendedPlaceEntities.isEmpty()) {
-                createMissionsForRecommendedPlaces(
-                        user, recommendedPlaceEntities, currentDominantEmotionKeyword
-                );
-            } else {
-                log.warn("장소 추천 실패: 미션 생성을 건너뜁니다.");
+                if (!recommendedPlaceEntities.isEmpty()) {
+                    createMissionsForRecommendedPlaces(
+                            user, recommendedPlaceEntities, currentDominantEmotionKeyword
+                    );
+                } else {
+                    log.warn("추천 장소가 없어 미션 생성을 건너뜁니다.");
+                }
+            } catch (Exception e) {
+                log.error("미션 생성 중 오류 발생: userId={}", user.getId(), e);
+                throw e;
             }
         }
     }
@@ -267,31 +283,25 @@ public class MissionService {
     public MissionDto.VerifyResponse verifyMission(
             Users user, Long missionId, MissionDto.VerifyRequest request) {
 
-        // 미션 조회
         Mission mission = missionRepository.findById(missionId)
                 .orElseThrow(() -> new CustomException(MissionErrorCode.MISSION_NOT_FOUND));
 
-        // 본인 미션 확인
         if (!mission.getUser().getId().equals(user.getId())) {
             throw new CustomException(MissionErrorCode.MISSION_NOT_OWNER);
         }
 
-        // 이미 완료된 미션 확인
         if (mission.getIsCompleted()) {
             throw new CustomException(MissionErrorCode.MISSION_ALREADY_COMPLETED);
         }
 
-        // 만료된 미션 확인
         if (mission.isExpired()) {
             throw new CustomException(MissionErrorCode.MISSION_EXPIRED);
         }
 
-        // 위치 정보 확인
         if (request.getLatitude() == null || request.getLongitude() == null) {
             throw new CustomException(MissionErrorCode.LOCATION_UNAVAILABLE);
         }
 
-        // 거리 확인 (50m 이내)
         Place place = mission.getPlace();
         double distance = DistanceCalculator.calculateDistance(
                 request.getLatitude(), request.getLongitude(),
@@ -301,11 +311,9 @@ public class MissionService {
             throw new CustomException(MissionErrorCode.LOCATION_TOO_FAR);
         }
 
-        // 미션 완료 처리
         mission.complete();
         missionRepository.save(mission);
 
-        // 포인트 지급
         user.addPoints(mission.getPoints());
         userRepository.save(user);
 
@@ -320,9 +328,7 @@ public class MissionService {
                 .build();
     }
 
-    // Mission을 MissionItem으로 변환
     private MissionDto.MissionItem convertToMissionItem(Mission mission, LocalDateTime now) {
-        // NEW 태그 판단 (48시간 이내 생성)
         long hoursSinceCreated = ChronoUnit.HOURS.between(mission.getCreatedAt(), now);
         boolean isNew = hoursSinceCreated <= NEW_TAG_HOURS && !mission.getIsCompleted();
 
@@ -333,11 +339,10 @@ public class MissionService {
                 .points(mission.getPoints())
                 .isCompleted(mission.getIsCompleted())
                 .isNew(isNew)
-                .emotion(mission.getEmotion()) // 세부 감정 단어를 그대로 사용
+                .emotion(mission.getEmotion())
                 .build();
     }
 
-    // 카카오맵 URL 생성
     private String generateKakaoMapUrl(Place place) {
         return String.format("https://map.kakao.com/link/map/%s,%s,%s",
                 place.getTitle(),
