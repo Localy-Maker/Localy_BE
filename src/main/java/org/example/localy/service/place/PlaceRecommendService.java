@@ -13,7 +13,6 @@ import org.example.localy.entity.place.PlaceImage;
 import org.example.localy.repository.place.PlaceImageRepository;
 import org.example.localy.repository.place.PlaceRepository;
 import org.example.localy.service.Chat.GPTService;
-import org.example.localy.service.mission.MissionService;
 import org.example.localy.util.CategoryMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -30,7 +29,6 @@ public class PlaceRecommendService {
     private final EmotionDataService emotionDataService;
     private final PlaceRepository placeRepository;
     private final PlaceImageRepository placeImageRepository;
-    private final MissionService missionService;
     private final GPTService gptService;
 
     // 감정 기반 장소 추천
