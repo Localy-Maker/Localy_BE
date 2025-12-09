@@ -15,6 +15,7 @@ import org.example.localy.repository.place.BookmarkRepository;
 import org.example.localy.repository.place.MissionRepository;
 import org.example.localy.repository.place.PlaceImageRepository;
 import org.example.localy.repository.place.PlaceRepository;
+import org.example.localy.service.mission.MissionService;
 import org.example.localy.util.DistanceCalculator;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -38,6 +39,7 @@ public class PlaceService {
     private final BookmarkRepository bookmarkRepository;
     private final PlaceImageRepository placeImageRepository;
     private final MissionRepository missionRepository;
+    private final MissionService missionService;
     private final RedisTemplate<String, Object> objectRedisTemplate;
     private static final String RECOMMENDED_PLACES_KEY_PREFIX = "localy:recommended_places:";
     private static final long RECOMMENDED_PLACES_TTL_HOURS = 24;
@@ -63,6 +65,9 @@ public class PlaceService {
         PlaceDto.MissionBanner missionBanner = getMissionBanner(user);
 
         // 감정 기반 추천 장소 (미션 생성 로직 포함)
+        missionService.processMissionGenerationAndAccumulation(user, latitude, longitude);
+
+        // 감정 기반 추천 장소
         List<PlaceDto.PlaceSimple> recommendedPlaces = getRecommendedPlaces(user, latitude, longitude);
 
         // 미션 장소 (활성 미션의 장소들)
@@ -70,7 +75,6 @@ public class PlaceService {
 
         // 최근 북마크한 장소
         List<PlaceDto.BookmarkItem> recentBookmarks = getRecentBookmarks(user);
-
         return PlaceDto.HomeResponse.builder()
                 .missionBanner(missionBanner)
                 .missionPlaces(missionPlaces)
