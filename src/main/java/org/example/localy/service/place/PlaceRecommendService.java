@@ -266,12 +266,13 @@ public class PlaceRecommendService {
         };
     }
 
-    // 테스트용
-    private String generateShortDescription(String category) {
-        return "새로운 경험을 시작해보세요";
+    private String generateShortDescription(String overview) {
+        if (overview == null || overview.isBlank()) {
+            return "";
+        }
+        return overview;
     }
 
-    // 테스트용
     // 세부 감정 단어를 사용하여 추천 이유 생성
     private String generateRecommendReason(String emotionKeyword, String category) {
         return String.format("%s 느낌에 어울리는 장소입니다", emotionKeyword);
