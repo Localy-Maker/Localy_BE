@@ -194,6 +194,10 @@ public class PlaceRecommendService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Place saveOrUpdatePlace(TourApiDto.LocationBasedItem apiPlace) {
+
+        log.info("TourAPI Tel Value for contentId {}: '{}'",
+                apiPlace.getContentid(), apiPlace.getTel());
+
         if (apiPlace.getContentid() == null || apiPlace.getContentid().isEmpty()) {
             log.warn("TourAPI 응답에서 contentId가 누락되어 장소 저장을 건너뜁니다. Title: {}", apiPlace.getTitle());
             throw new CustomException(PlaceErrorCode.TOUR_API_ERROR); // 유효하지 않은 데이터 예외 던지기
@@ -224,7 +228,7 @@ public class PlaceRecommendService {
                 .phoneNumber(apiPlace.getTel())
                 .openingHours(openingHours)
                 .thumbnailImage(apiPlace.getFirstimage2() != null ? apiPlace.getFirstimage2() : apiPlace.getFirstimage())
-                .shortDescription(generateShortDescription(category))
+                //.shortDescription(generateShortDescription(category))
                 .longDescription(commonItem != null ? commonItem.getOverview() : "")
                 .bookmarkCount(0)
                 .build();
@@ -266,12 +270,6 @@ public class PlaceRecommendService {
         };
     }
 
-    private String generateShortDescription(String overview) {
-        if (overview == null || overview.isBlank()) {
-            return "";
-        }
-        return overview;
-    }
 
     // 세부 감정 단어를 사용하여 추천 이유 생성
     private String generateRecommendReason(String emotionKeyword, String category) {
