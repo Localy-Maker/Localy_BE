@@ -194,8 +194,7 @@ public class PlaceService {
                 .phoneNumber(place.getPhoneNumber())
                 .openingHours(place.getOpeningHours())
                 .images(imageUrls.isEmpty() ? List.of(place.getThumbnailImage()) : imageUrls)
-                .shortDescription(place.getShortDescription())
-                .longDescription(place.getLongDescription())
+                .shortDescription(generateShortDescription(place.getLongDescription()))
                 .isBookmarked(isBookmarked)
                 .bookmarkCount(place.getBookmarkCount())
                 .build();
@@ -340,5 +339,12 @@ public class PlaceService {
         } else {
             return "매우 부정적"; // 0~16
         }
+    }
+
+    private String generateShortDescription(String overview) {
+        if (overview == null || overview.isBlank()) {
+            return "";
+        }
+        return overview;
     }
 }
