@@ -116,17 +116,18 @@ public class PlaceRecommendService {
 
         List<Place> allPlaces = new ArrayList<>();
         for (TourApiDto.LocationBasedItem apiPlace : apiPlaces) {
-
             try {
                 Place place = saveOrUpdatePlace(apiPlace);
                 allPlaces.add(place);
             } catch (CustomException e) {
                 log.warn("장소 저장/업데이트 중 오류 발생 (TourAPI 상세조회 실패): {}", e.getMessage());
-
+            } catch (Exception e) {
+                log.error("장소 저장/업데이트 중 예상치 못한 오류 발생: {}", e.getMessage(), e);
             }
         }
 
         if (allPlaces.isEmpty()) {
+            log.warn("주변 API에서 유효한 장소를 찾지 못했습니다. GPT 추천을 건너뜁니다.");
             return RecommendDto.RecommendResponse.builder()
                     .recommendedPlaces(List.of())
                     .missions(List.of())
@@ -152,6 +153,14 @@ public class PlaceRecommendService {
                 .filter(placeMap::containsKey)
                 .map(placeMap::get)
                 .collect(Collectors.toList());
+
+        if (recommendedPlaces.isEmpty()) {
+            log.warn("GPT가 추천한 장소 {}개 중 DB에 존재하는 장소가 없어 미션 생성을 건너뜁니다.", aiRecommendedList.size());
+            return RecommendDto.RecommendResponse.builder()
+                    .recommendedPlaces(List.of())
+                    .missions(List.of())
+                    .build();
+        }
 
         List<RecommendDto.MissionItem> missions = List.of();
 
