@@ -15,8 +15,8 @@ import org.example.localy.repository.place.PlaceRepository;
 import org.example.localy.service.Chat.GPTService;
 import org.example.localy.util.CategoryMapper;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -69,10 +69,13 @@ public class PlaceRecommendService {
             for (TourApiDto.LocationBasedItem apiPlace : apiPlaces) {
                 try {
                     Place place = saveOrUpdatePlace(apiPlace);
-                    recommendedPlaces.add(place);
-                    if (recommendedPlaces.size() >= 5) break;
-                } catch (CustomException e) {
-                    log.warn("장소 저장/업데이트 중 오류 발생 (TourAPI 상세조회 실패): {}", e.getMessage());
+                    if (place != null) {
+                        recommendedPlaces.add(place);
+                        if (recommendedPlaces.size() >= 5) break;
+                    }
+                } catch (Exception e) {
+                    log.warn("장소 저장/업데이트 중 오류 발생 - contentId: {}, error: {}",
+                            apiPlace.getContentid(), e.getMessage());
                 }
             }
             if (recommendedPlaces.size() >= 5) break;
@@ -104,7 +107,6 @@ public class PlaceRecommendService {
                 .build();
     }
 
-    //@Transactional
     private RecommendDto.RecommendResponse recommendEmotionBasedPlaces(
             Users user, Double latitude, Double longitude, RecommendDto.EmotionData emotionData) {
 
@@ -118,11 +120,12 @@ public class PlaceRecommendService {
         for (TourApiDto.LocationBasedItem apiPlace : apiPlaces) {
             try {
                 Place place = saveOrUpdatePlace(apiPlace);
-                allPlaces.add(place);
-            } catch (CustomException e) {
-                log.warn("장소 저장/업데이트 중 오류 발생 (TourAPI 상세조회 실패): {}", e.getMessage());
+                if (place != null) {
+                    allPlaces.add(place);
+                }
             } catch (Exception e) {
-                log.error("장소 저장/업데이트 중 예상치 못한 오류 발생: {}", e.getMessage(), e);
+                log.warn("장소 저장/업데이트 중 오류 발생 - contentId: {}, error: {}",
+                        apiPlace.getContentid(), e.getMessage());
             }
         }
 
@@ -192,72 +195,127 @@ public class PlaceRecommendService {
                 .build();
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Place saveOrUpdatePlace(TourApiDto.LocationBasedItem apiPlace) {
-
-        log.info("TourAPI Tel Value for contentId {}: '{}'",
-                apiPlace.getContentid(), apiPlace.getTel());
-
-        if (apiPlace.getContentid() == null || apiPlace.getContentid().isEmpty()) {
-            log.warn("TourAPI 응답에서 contentId가 누락되어 장소 저장을 건너뜁니다. Title: {}", apiPlace.getTitle());
-            throw new CustomException(PlaceErrorCode.TOUR_API_ERROR); // 유효하지 않은 데이터 예외 던지기
+        // 1. contentId 유효성 검증
+        if (apiPlace.getContentid() == null || apiPlace.getContentid().trim().isEmpty()) {
+            log.warn("TourAPI 응답에서 contentId가 누락됨. Title: {}", apiPlace.getTitle());
+            throw new CustomException(PlaceErrorCode.TOUR_API_ERROR);
         }
 
-        Optional<Place> existingPlace = placeRepository.findByContentId(apiPlace.getContentid());
+        // 2. 전화번호 정제 (빈 문자열 -> null)
+        String cleanedTel = cleanPhoneNumber(apiPlace.getTel());
 
+        log.debug("장소 저장 시도 - contentId: {}, title: {}, tel: '{}'",
+                apiPlace.getContentid(), apiPlace.getTitle(), cleanedTel);
+
+        // 3. 기존 장소 확인
+        Optional<Place> existingPlace = placeRepository.findByContentId(apiPlace.getContentid());
         if (existingPlace.isPresent()) {
+            log.debug("기존 장소 발견 - placeId: {}, contentId: {}",
+                    existingPlace.get().getId(), apiPlace.getContentid());
             return existingPlace.get();
         }
 
-        TourApiDto.CommonItem commonItem = tourApiService.getCommonDetail(apiPlace.getContentid());
-        TourApiDto.IntroItem introItem = tourApiService.getIntroDetail(
-                apiPlace.getContentid(), apiPlace.getContenttypeid());
+        // 4. 새 장소 생성을 위한 상세 정보 조회
+        try {
+            TourApiDto.CommonItem commonItem = tourApiService.getCommonDetail(apiPlace.getContentid());
+            TourApiDto.IntroItem introItem = tourApiService.getIntroDetail(
+                    apiPlace.getContentid(), apiPlace.getContenttypeid());
 
-        String category = CategoryMapper.getCategoryName(apiPlace.getContenttypeid(), apiPlace.getCat3());
-        String openingHours = extractOpeningHours(introItem, apiPlace.getContenttypeid());
+            String category = CategoryMapper.getCategoryName(
+                    apiPlace.getContenttypeid(), apiPlace.getCat3());
+            String openingHours = extractOpeningHours(introItem, apiPlace.getContenttypeid());
 
-        Place place = Place.builder()
-                .contentId(apiPlace.getContentid())
-                .contentTypeId(apiPlace.getContenttypeid())
-                .title(apiPlace.getTitle())
-                .category(category)
-                .address(apiPlace.getAddr1())
-                .addressDetail(apiPlace.getAddr2())
-                .latitude(Double.parseDouble(apiPlace.getMapy()))
-                .longitude(Double.parseDouble(apiPlace.getMapx()))
-                .phoneNumber(apiPlace.getTel())
-                .openingHours(openingHours)
-                .thumbnailImage(apiPlace.getFirstimage2() != null ? apiPlace.getFirstimage2() : apiPlace.getFirstimage())
-                //.shortDescription(generateShortDescription(category))
-                .longDescription(commonItem != null ? commonItem.getOverview() : "")
-                .bookmarkCount(0)
-                .build();
+            // 5. Place 엔티티 생성 (ID는 설정하지 않음 - 자동 생성)
+            Place place = Place.builder()
+                    .contentId(apiPlace.getContentid())
+                    .contentTypeId(apiPlace.getContenttypeid())
+                    .title(apiPlace.getTitle())
+                    .category(category)
+                    .address(apiPlace.getAddr1())
+                    .addressDetail(apiPlace.getAddr2())
+                    .latitude(parseDouble(apiPlace.getMapy()))
+                    .longitude(parseDouble(apiPlace.getMapx()))
+                    .phoneNumber(cleanedTel)  // 정제된 전화번호 사용
+                    .openingHours(openingHours)
+                    .thumbnailImage(selectThumbnail(apiPlace))
+                    .longDescription(commonItem != null ? commonItem.getOverview() : "")
+                    .bookmarkCount(0)
+                    .build();
 
-        Place savedPlace = placeRepository.save(place);
-        saveImages(savedPlace, apiPlace.getContentid());
+            // 6. 저장
+            Place savedPlace = placeRepository.save(place);
+            log.info("새 장소 저장 완료 - placeId: {}, contentId: {}",
+                    savedPlace.getId(), savedPlace.getContentId());
 
-        return savedPlace;
-    }
+            // 7. 이미지 저장
+            saveImages(savedPlace, apiPlace.getContentid());
 
-    // 이미지 저장
-    private void saveImages(Place place, String contentId) {
-        List<TourApiDto.ImageItem> images = tourApiService.getImages(contentId);
+            return savedPlace;
 
-        int order = 0;
-        if (images != null) {
-            for (TourApiDto.ImageItem image : images) {
-                PlaceImage placeImage = PlaceImage.builder()
-                        .place(place)
-                        .imageUrl(image.getOriginimgurl())
-                        .thumbnailUrl(image.getSmallimageurl())
-                        .displayOrder(order++)
-                        .build();
-                placeImageRepository.save(placeImage);
-            }
+        } catch (Exception e) {
+            log.error("장소 저장 실패 - contentId: {}, error: {}",
+                    apiPlace.getContentid(), e.getMessage(), e);
+            // 예외를 던지지 않고 null 반환하여 상위에서 처리하도록 함
+            return null;
         }
     }
 
-    // 영업시간 추출
+    private String cleanPhoneNumber(String phoneNumber) {
+        if (phoneNumber == null || phoneNumber.trim().isEmpty()) {
+            return null;
+        }
+        return phoneNumber.trim();
+    }
+
+    private Double parseDouble(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return 0.0;
+        }
+        try {
+            return Double.parseDouble(value);
+        } catch (NumberFormatException e) {
+            log.warn("Double 파싱 실패: {}", value);
+            return 0.0;
+        }
+    }
+
+    private String selectThumbnail(TourApiDto.LocationBasedItem apiPlace) {
+        if (StringUtils.hasText(apiPlace.getFirstimage2())) {
+            return apiPlace.getFirstimage2();
+        }
+        if (StringUtils.hasText(apiPlace.getFirstimage())) {
+            return apiPlace.getFirstimage();
+        }
+        return null;
+    }
+
+    private void saveImages(Place place, String contentId) {
+        try {
+            List<TourApiDto.ImageItem> images = tourApiService.getImages(contentId);
+
+            if (images != null && !images.isEmpty()) {
+                int order = 0;
+                for (TourApiDto.ImageItem image : images) {
+                    if (StringUtils.hasText(image.getOriginimgurl())) {
+                        PlaceImage placeImage = PlaceImage.builder()
+                                .place(place)
+                                .imageUrl(image.getOriginimgurl())
+                                .thumbnailUrl(image.getSmallimageurl())
+                                .displayOrder(order++)
+                                .build();
+                        placeImageRepository.save(placeImage);
+                    }
+                }
+                log.debug("이미지 {}개 저장 완료 - placeId: {}", order, place.getId());
+            }
+        } catch (Exception e) {
+            log.warn("이미지 저장 실패 - placeId: {}, error: {}",
+                    place.getId(), e.getMessage());
+            // 이미지 저장 실패는 무시 (장소 저장은 성공)
+        }
+    }
+
     private String extractOpeningHours(TourApiDto.IntroItem introItem, String contentTypeId) {
         if (introItem == null) return null;
 
@@ -270,8 +328,6 @@ public class PlaceRecommendService {
         };
     }
 
-
-    // 세부 감정 단어를 사용하여 추천 이유 생성
     private String generateRecommendReason(String emotionKeyword, String category) {
         return String.format("%s 느낌에 어울리는 장소입니다", emotionKeyword);
     }
