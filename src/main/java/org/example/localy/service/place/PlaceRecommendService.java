@@ -195,6 +195,7 @@ public class PlaceRecommendService {
                 .build();
     }
 
+    @Transactional
     public Place saveOrUpdatePlace(TourApiDto.LocationBasedItem apiPlace) {
 
         // 1. contentId 유효성 검사
