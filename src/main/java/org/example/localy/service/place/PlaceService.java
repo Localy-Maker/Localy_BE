@@ -271,10 +271,14 @@ public class PlaceService {
                     .build();
         } else {
             // 북마크 추가
+            String currentEmotion = (request != null && request.getCurrentEmotion() != null)
+                    ? request.getCurrentEmotion()
+                    : "기본";  // null 처리 추가
+
             Bookmark bookmark = Bookmark.builder()
                     .user(user)
                     .place(place)
-                    .bookmarkedEmotion(request.getCurrentEmotion())
+                    .bookmarkedEmotion(currentEmotion)
                     .build();
             bookmarkRepository.save(bookmark);
 
