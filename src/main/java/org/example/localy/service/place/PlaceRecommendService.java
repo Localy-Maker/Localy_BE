@@ -254,10 +254,8 @@ public class PlaceRecommendService {
             return savedPlace;
 
         } catch (Exception e) {
-            log.error("장소 저장 실패 - contentId: {}, error: {}",
-                    apiPlace.getContentid(), e.getMessage(), e);
-            // 예외를 던지지 않고 null 반환하여 상위에서 처리하도록 함
-            return null;
+            log.error("장소 저장 실패 - contentId: {}, error: {}", apiPlace.getContentid(), e.getMessage(), e);
+            throw e; // 무조건 던져서 트랜잭션 롤백
         }
     }
 
