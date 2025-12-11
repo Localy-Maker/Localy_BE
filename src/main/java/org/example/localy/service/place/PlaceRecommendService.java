@@ -196,68 +196,67 @@ public class PlaceRecommendService {
     }
 
     public Place saveOrUpdatePlace(TourApiDto.LocationBasedItem apiPlace) {
-        // 1. contentId 유효성 검증
-        if (apiPlace.getContentid() == null || apiPlace.getContentid().trim().isEmpty()) {
-            log.warn("TourAPI 응답에서 contentId가 누락됨. Title: {}", apiPlace.getTitle());
+
+        // 1. contentId 유효성 검사
+        if (!StringUtils.hasText(apiPlace.getContentid())) {
+            log.warn("TourAPI 응답에서 contentId 누락. title={}", apiPlace.getTitle());
             throw new CustomException(PlaceErrorCode.TOUR_API_ERROR);
         }
 
-        // 2. 전화번호 정제 (빈 문자열 -> null)
+        String contentId = apiPlace.getContentid();
+
+        // 2. 전화번호 정제
         String cleanedTel = cleanPhoneNumber(apiPlace.getTel());
 
-        log.debug("장소 저장 시도 - contentId: {}, title: {}, tel: '{}'",
-                apiPlace.getContentid(), apiPlace.getTitle(), cleanedTel);
+        // 3. 기존 장소 있는지 확인
+        Optional<Place> existing = placeRepository.findByContentId(contentId);
+        if (existing.isPresent()) return existing.get();
 
-        // 3. 기존 장소 확인
-        Optional<Place> existingPlace = placeRepository.findByContentId(apiPlace.getContentid());
-        if (existingPlace.isPresent()) {
-            log.debug("기존 장소 발견 - placeId: {}, contentId: {}",
-                    existingPlace.get().getId(), apiPlace.getContentid());
-            return existingPlace.get();
-        }
-
-        // 4. 새 장소 생성을 위한 상세 정보 조회
         try {
-            TourApiDto.CommonItem commonItem = tourApiService.getCommonDetail(apiPlace.getContentid());
-            TourApiDto.IntroItem introItem = tourApiService.getIntroDetail(
-                    apiPlace.getContentid(), apiPlace.getContenttypeid());
+            // 4. 상세 정보 조회
+            TourApiDto.CommonItem commonItem = tourApiService.getCommonDetail(contentId);
+            TourApiDto.IntroItem introItem = tourApiService.getIntroDetail(contentId, apiPlace.getContenttypeid());
 
-            String category = CategoryMapper.getCategoryName(
-                    apiPlace.getContenttypeid(), apiPlace.getCat3());
-            String openingHours = extractOpeningHours(introItem, apiPlace.getContenttypeid());
+            // 5. 카테고리 처리
+            String category = CategoryMapper.getCategoryName(apiPlace.getContenttypeid(), apiPlace.getCat3());
 
-            // 5. Place 엔티티 생성 (ID는 설정하지 않음 - 자동 생성)
+            // 6. 오프닝 아워 파싱 (1번 방식: 그냥 텍스트 저장)
+            String openingHours = extractOpeningHoursSafe(introItem, apiPlace.getContenttypeid());
+
+            // 7. Place 엔티티 생성
             Place place = Place.builder()
-                    .contentId(apiPlace.getContentid())
-                    .contentTypeId(apiPlace.getContenttypeid())
+                    .contentId(contentId)
+                    .contentTypeId(String.valueOf(apiPlace.getContenttypeid()))
                     .title(apiPlace.getTitle())
                     .category(category)
-                    .address(apiPlace.getAddr1())
-                    .addressDetail(apiPlace.getAddr2())
+                    .address(apiPlace.getAddr1() != null ? apiPlace.getAddr1() : "")
+                    .addressDetail(apiPlace.getAddr2() != null ? apiPlace.getAddr2() : "")
                     .latitude(parseDouble(apiPlace.getMapy()))
                     .longitude(parseDouble(apiPlace.getMapx()))
-                    .phoneNumber(cleanedTel)  // 정제된 전화번호 사용
-                    .openingHours(openingHours)
+                    .phoneNumber(cleanedTel)
+                    .openingHours(openingHours != null ? openingHours : "")
                     .thumbnailImage(selectThumbnail(apiPlace))
-                    .longDescription(commonItem != null ? commonItem.getOverview() : "")
+                    .longDescription(commonItem != null && commonItem.getOverview() != null
+                            ? commonItem.getOverview()
+                            : "")
                     .bookmarkCount(0)
                     .build();
 
-            // 6. 저장
-            Place savedPlace = placeRepository.save(place);
-            log.info("새 장소 저장 완료 - placeId: {}, contentId: {}",
-                    savedPlace.getId(), savedPlace.getContentId());
+            // 8. 저장
+            Place saved = placeRepository.save(place);
+            log.info("Place 저장 성공 - placeId={}, contentId={}", saved.getId(), contentId);
 
-            // 7. 이미지 저장
-            saveImages(savedPlace, apiPlace.getContentid());
+            // 9. 이미지 저장
+            saveImagesSafe(saved, contentId);
 
-            return savedPlace;
+            return saved;
 
         } catch (Exception e) {
-            log.error("장소 저장 실패 - contentId: {}, error: {}", apiPlace.getContentid(), e.getMessage(), e);
-            throw e; // 무조건 던져서 트랜잭션 롤백
+            log.error("Place 저장 실패 - contentId={}, error={}", contentId, e.getMessage(), e);
+            throw e;
         }
     }
+
 
     private String cleanPhoneNumber(String phoneNumber) {
         if (phoneNumber == null || phoneNumber.trim().isEmpty()) {
@@ -288,43 +287,45 @@ public class PlaceRecommendService {
         return null;
     }
 
-    private void saveImages(Place place, String contentId) {
+    private void saveImagesSafe(Place place, String contentId) {
         try {
             List<TourApiDto.ImageItem> images = tourApiService.getImages(contentId);
 
-            if (images != null && !images.isEmpty()) {
-                int order = 0;
-                for (TourApiDto.ImageItem image : images) {
-                    if (StringUtils.hasText(image.getOriginimgurl())) {
-                        PlaceImage placeImage = PlaceImage.builder()
-                                .place(place)
-                                .imageUrl(image.getOriginimgurl())
-                                .thumbnailUrl(image.getSmallimageurl())
-                                .displayOrder(order++)
-                                .build();
-                        placeImageRepository.save(placeImage);
-                    }
-                }
-                log.debug("이미지 {}개 저장 완료 - placeId: {}", order, place.getId());
+            if (images == null || images.isEmpty()) return;
+
+            int order = 0;
+            for (TourApiDto.ImageItem img : images) {
+                if (!StringUtils.hasText(img.getOriginimgurl())) continue;
+
+                PlaceImage pi = PlaceImage.builder()
+                        .place(place)
+                        .imageUrl(img.getOriginimgurl())
+                        .thumbnailUrl(img.getSmallimageurl())
+                        .displayOrder(order++)
+                        .build();
+
+                placeImageRepository.save(pi);
             }
         } catch (Exception e) {
-            log.warn("이미지 저장 실패 - placeId: {}, error: {}",
-                    place.getId(), e.getMessage());
-            // 이미지 저장 실패는 무시 (장소 저장은 성공)
+            log.warn("이미지 저장 실패 - placeId={}, message={}", place.getId(), e.getMessage());
         }
     }
 
-    private String extractOpeningHours(TourApiDto.IntroItem introItem, String contentTypeId) {
-        if (introItem == null) return null;
 
-        return switch (contentTypeId) {
-            case "12" -> introItem.getUsetime();
-            case "14" -> introItem.getUsetimeculture();
-            case "39" -> introItem.getOpentimefood();
-            case "38" -> introItem.getOpentime();
-            default -> null;
+    private String extractOpeningHoursSafe(TourApiDto.IntroItem introItem, String typeId) {
+        if (introItem == null) return "";
+
+        String c = String.valueOf(typeId);
+
+        return switch (c) {
+            case "12" -> Optional.ofNullable(introItem.getUsetime()).orElse("");
+            case "14" -> Optional.ofNullable(introItem.getUsetimeculture()).orElse("");
+            case "39" -> Optional.ofNullable(introItem.getOpentimefood()).orElse("");
+            case "38" -> Optional.ofNullable(introItem.getOpentime()).orElse("");
+            default -> "";
         };
     }
+
 
     private String generateRecommendReason(String emotionKeyword, String category) {
         return String.format("%s 느낌에 어울리는 장소입니다", emotionKeyword);
