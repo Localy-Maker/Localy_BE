@@ -44,7 +44,7 @@ public class Place {
     @Column(length = 50)
     private String phoneNumber;
 
-    @Column(length = 200)
+    @Column(columnDefinition = "TEXT")
     private String openingHours;
 
     @Column(columnDefinition = "TEXT")
