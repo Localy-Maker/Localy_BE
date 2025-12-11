@@ -57,7 +57,7 @@ public class PlaceController {
     public ResponseEntity<BaseResponse<PlaceDto.BookmarkResponse>> toggleBookmark(
             @AuthenticationPrincipal Users user,
             @PathVariable Long placeId,
-            @RequestBody PlaceDto.BookmarkRequest request) {
+            @RequestBody(required = false) PlaceDto.BookmarkRequest request) {  // required = false 추가
 
         PlaceDto.BookmarkResponse response = placeService.toggleBookmark(user, placeId, request);
 
