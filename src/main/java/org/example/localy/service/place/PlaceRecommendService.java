@@ -288,26 +288,23 @@ public class PlaceRecommendService {
     }
 
     private void saveImagesSafe(Place place, String contentId) {
-        try {
-            List<TourApiDto.ImageItem> images = tourApiService.getImages(contentId);
+        // try { // 제거
+        List<TourApiDto.ImageItem> images = tourApiService.getImages(contentId);
 
-            if (images == null || images.isEmpty()) return;
+        if (images == null || images.isEmpty()) return;
 
-            int order = 0;
-            for (TourApiDto.ImageItem img : images) {
-                if (!StringUtils.hasText(img.getOriginimgurl())) continue;
+        int order = 0;
+        for (TourApiDto.ImageItem img : images) {
+            if (!StringUtils.hasText(img.getOriginimgurl())) continue;
 
-                PlaceImage pi = PlaceImage.builder()
-                        .place(place)
-                        .imageUrl(img.getOriginimgurl())
-                        .thumbnailUrl(img.getSmallimageurl())
-                        .displayOrder(order++)
-                        .build();
+            PlaceImage pi = PlaceImage.builder()
+                    .place(place)
+                    .imageUrl(img.getOriginimgurl())
+                    .thumbnailUrl(img.getSmallimageurl())
+                    .displayOrder(order++)
+                    .build();
 
-                placeImageRepository.save(pi);
-            }
-        } catch (Exception e) {
-            log.warn("이미지 저장 실패 - placeId={}, message={}", place.getId(), e.getMessage());
+            placeImageRepository.save(pi);
         }
     }
 
