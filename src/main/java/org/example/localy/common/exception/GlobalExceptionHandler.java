@@ -7,6 +7,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.stream.Collectors;
 
@@ -40,6 +42,18 @@ public class GlobalExceptionHandler {
     return ResponseEntity
         .badRequest()
         .body(BaseResponse.failure("VALIDATION_ERROR", errorMessages));
+  }
+
+  @ExceptionHandler(NoResourceFoundException.class)
+  public ResponseEntity<BaseResponse<Object>> handleNoResourceFoundException(NoResourceFoundException ex) {
+    log.warn("Resource Not Found: {}", ex.getMessage());
+
+    return ResponseEntity
+            .status(HttpStatus.NOT_FOUND) // 404 상태 코드 반환
+            .body(BaseResponse.failure(
+                    GlobalErrorCode.RESOURCE_NOT_FOUND.getCode(),
+                    GlobalErrorCode.RESOURCE_NOT_FOUND.getMessage()
+            ));
   }
 
   // 예상치 못한 예외
