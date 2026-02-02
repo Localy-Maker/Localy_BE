@@ -5,7 +5,6 @@ import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
-
 import java.time.LocalDateTime;
 
 @Entity
@@ -45,6 +44,12 @@ public class Users {
     @Column(length = 50)
     private String country;
 
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    private MembershipLevel membershipLevel = MembershipLevel.BASIC;
+
+    private LocalDateTime premiumExpiryDate;
+
     @CreatedDate
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -69,6 +74,8 @@ public class Users {
         LOCAL, GOOGLE
     }
 
+    public enum MembershipLevel { BASIC, PREMIUM }
+
     public void updatePassword(String password) {
         this.password = password;
     }
@@ -81,6 +88,11 @@ public class Users {
         this.country = country;
     }
 
+    public boolean isPremium() {
+        return membershipLevel == MembershipLevel.PREMIUM &&
+                premiumExpiryDate != null &&
+                premiumExpiryDate.isAfter(LocalDateTime.now());
+    }
     public void addPoints(int amount) {
         this.points += amount;
     }

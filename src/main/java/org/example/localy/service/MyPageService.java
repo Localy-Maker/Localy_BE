@@ -17,6 +17,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.example.localy.repository.place.MissionArchiveRepository;
 
 @Slf4j
 @Service
@@ -36,6 +37,7 @@ public class MyPageService {
     private final NotificationReadRepository notificationReadRepository;
     private final EmotionDayResultRepository emotionDayResultRepository;
     private final EmotionWindowResultRepository emotionWindowResultRepository;
+    private final MissionArchiveRepository missionArchiveRepository;
 
     public String getEmailByUserId(Long userId) {
         Users user = userRepository.findById(userId)
@@ -48,13 +50,15 @@ public class MyPageService {
         Users user = userRepository.findById(userId)
                 .orElseThrow(() -> new CustomException(AuthErrorCode.USER_NOT_FOUND));
 
-        log.info("프로필 조회: userId={}, email={}", userId, user.getEmail());
+        log.info("프로필 조회: userId={}, membership={}, email={}", userId, user.getMembershipLevel(), user.getEmail());
 
         return MyPageDto.ProfileResponse.builder()
                 .userId(user.getId())
                 .nickname(user.getNickname())
                 .email(user.getEmail())
                 .points(user.getPoints())
+                .membershipLevel(user.getMembershipLevel().toString())
+                .premiumExpiryDate(user.getPremiumExpiryDate())
                 .build();
     }
 
@@ -134,6 +138,7 @@ public class MyPageService {
             redisTemplate.delete(redisKey);
 
             missionRepository.deleteAllByUser(user);
+            missionArchiveRepository.deleteAllByUser(user);
             bookmarkRepository.deleteAllByUser(user);
             notificationReadRepository.deleteAllByUser(user);
             chatBotRepository.deleteAllByUserId(userId);

@@ -80,6 +80,8 @@ dependencies {
 
     //번역기
     implementation 'com.google.cloud:google-cloud-translate:2.78.0'
+
+    implementation 'io.netty:netty-resolver-dns-native-macos:4.1.115.Final:osx-aarch_64'
 }
 
 tasks.named('test') {
