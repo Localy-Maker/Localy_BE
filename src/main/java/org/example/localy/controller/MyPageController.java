@@ -8,10 +8,13 @@ import org.example.localy.common.response.BaseResponse;
 import org.example.localy.dto.AuthDto;
 import org.example.localy.dto.MyPageDto;
 import org.example.localy.dto.OnboardingDto;
+import org.example.localy.entity.Users;
+import org.example.localy.repository.UserRepository;
 import org.example.localy.service.AuthService;
 import org.example.localy.service.EmailVerificationService;
 import org.example.localy.service.MyPageService;
 import org.example.localy.service.OnboardingService;
+import org.example.localy.service.mission.MissionService;
 import org.example.localy.util.JwtUtil;
 import org.springframework.web.bind.annotation.*;
 
@@ -24,6 +27,8 @@ public class MyPageController {
     private final MyPageService myPageService;
     private final OnboardingService onboardingService;
     private final JwtUtil jwtUtil;
+    private final MissionService missionService;
+    private final UserRepository userRepository;
 
     /**
      * 마이페이지 홈 - 프로필 조회
@@ -122,17 +127,35 @@ public class MyPageController {
     }
 
     /**
-     * 프리미엄 플랜 (미구현)
+     * 프리미엄 플랜 정보 조회
      */
-    @Operation(summary = "프리미엄 플랜", description = "프리미엄 플랜 정보 조회 (추후 구현 예정)")
+    @Operation(summary = "프리미엄 플랜 조회", description = "사용자의 현재 프리미엄 구독 상태 및 만료일 조회")
     @GetMapping("/premium")
-    public BaseResponse<Void> getPremiumPlan(
+    public BaseResponse<Users> getPremiumPlan(
             @RequestHeader("Authorization") String authorizationHeader
     ) {
-        String token = authorizationHeader.replace("Bearer ", "");
-        jwtUtil.validateToken(token);
+        Long userId = getUserIdFromHeader(authorizationHeader);
+        Users user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
 
-        return BaseResponse.success("프리미엄 플랜 기능은 준비 중입니다.", null);
+        return BaseResponse.success("프리미엄 상태 조회 성공", user);
+    }
+
+    /**
+     * 프리미엄 구독 구매
+     */
+    @Operation(summary = "프리미엄 구독 구매", description = "포인트를 사용하여 구독권 구매 (7DAYS: 50P, 30DAYS: 200P)")
+    @PostMapping("/premium/purchase")
+    public BaseResponse<String> purchasePremium(
+            @RequestHeader("Authorization") String authorizationHeader,
+            @RequestParam String planType
+    ) {
+        Long userId = getUserIdFromHeader(authorizationHeader);
+        Users user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
+
+        missionService.purchasePremium(user, planType);
+        return BaseResponse.success("프리미엄 구독 구매가 완료되었습니다.", null);
     }
 
     /**
@@ -149,5 +172,11 @@ public class MyPageController {
 
         MyPageDto.DeleteAccountResponse response = myPageService.deleteAccount(userId);
         return BaseResponse.success(response.getMessage(), response);
+    }
+
+    private Long getUserIdFromHeader(String authorizationHeader) {
+        String token = authorizationHeader.replace("Bearer ", "");
+        jwtUtil.validateToken(token);
+        return jwtUtil.getUserIdFromToken(token);
     }
 }

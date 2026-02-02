@@ -10,6 +10,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
+
 public class MyPageDto {
 
     @Getter
@@ -29,6 +31,12 @@ public class MyPageDto {
 
         @Schema(description = "포인트")
         private Integer points;
+
+        @Schema(description = "멤버십 등급 (BASIC, PREMIUM)")
+        private String membershipLevel;
+
+        @Schema(description = "프리미엄 만료일")
+        private LocalDateTime premiumExpiryDate;
     }
 
     @Getter
