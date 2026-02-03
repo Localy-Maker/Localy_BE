@@ -2,64 +2,67 @@ package org.example.localy.entity.place;
 
 import jakarta.persistence.*;
 import lombok.*;
-
+import java.io.Serializable;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
-@Table(name = "places")
 @Getter
+@Setter
+@Builder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
-@Builder
-public class Place {
+public class Place implements Serializable {
+
+    private static final long serialVersionUID = 1L;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(nullable = false, unique = true)
-    private String contentId;  // 관광공사 API contentId
+    private String contentId;
 
     @Column(nullable = false)
-    private String contentTypeId;  // 12:관광지, 14:문화시설, 39:음식점 등
-
-    @Column(nullable = false, length = 200)
     private String title;
 
-    @Column(length = 100)
-    private String category;  // cat3 기반 카테고리
-
-    @Column(columnDefinition = "TEXT")
+    private String category;
     private String address;
-
-    @Column(length = 100)
-    private String addressDetail;
-
-    @Column(nullable = false)
-    private Double latitude;
-
-    @Column(nullable = false)
-    private Double longitude;
-
-    @Column(length = 50)
+    private String tel;
     private String phoneNumber;
-
-    @Column(columnDefinition = "TEXT")
     private String openingHours;
 
     @Column(columnDefinition = "TEXT")
-    private String thumbnailImage;
-
-    @Column(columnDefinition = "TEXT")
-    private String shortDescription;
+    private String overview;
 
     @Column(columnDefinition = "TEXT")
     private String longDescription;
 
-    @Column(nullable = false)
+    private String shortDescription;
+
+    private String thumbnailImage;
+
+    private String firstImage;
+
+    @Column(columnDefinition = "DECIMAL(18, 10)")
+    private Double latitude;
+
+    @Column(columnDefinition = "DECIMAL(18, 10)")
+    private Double longitude;
+
+    private Double mapX;
+
+    private Double mapY;
+
+    @Builder.Default
     private Integer bookmarkCount = 0;
 
-    @Column(nullable = false)
+    @Builder.Default
+    @OneToMany(mappedBy = "place", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<PlaceImage> images = new ArrayList<>();
+
+    @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
     @Column(nullable = false)
@@ -69,6 +72,7 @@ public class Place {
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
+        if (this.bookmarkCount == null) this.bookmarkCount = 0;
     }
 
     @PreUpdate
@@ -85,4 +89,5 @@ public class Place {
             this.bookmarkCount--;
         }
     }
+
 }

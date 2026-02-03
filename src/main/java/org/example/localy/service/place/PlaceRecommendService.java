@@ -7,6 +7,7 @@ import org.example.localy.common.exception.errorCode.PlaceErrorCode;
 import org.example.localy.constant.EmotionConstants;
 import org.example.localy.dto.place.RecommendDto;
 import org.example.localy.dto.place.TourApiDto;
+import org.example.localy.entity.EmotionWindowResult;
 import org.example.localy.entity.Users;
 import org.example.localy.entity.place.Place;
 import org.example.localy.entity.place.PlaceImage;
@@ -19,313 +20,181 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import java.util.*;
 import java.util.stream.Collectors;
+import org.springframework.data.redis.core.RedisTemplate;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class PlaceRecommendService {
-
     private final TourApiService tourApiService;
     private final EmotionDataService emotionDataService;
     private final PlaceRepository placeRepository;
     private final PlaceImageRepository placeImageRepository;
     private final GPTService gptService;
+    private final RedisTemplate<String, Object> redisTemplate;
 
-    // 감정 기반 장소 추천
-    @Transactional
+    private final org.example.localy.repository.EmotionWindowResultRepository emotionWindowResultRepository;
+
+    // 기존 서비스(MissionService, PlaceService)가 호출하는 메서드 이름에 맞춰 추가/수정
     public RecommendDto.RecommendResponse recommendPlaces(Users user, Double latitude, Double longitude) {
-        // EmotionDataService가 Score(0-100)와 DominantEmotion(GPT가 뽑은 세부 감정 단어)를 반환한다고 가정
-        RecommendDto.EmotionData emotionData = emotionDataService.getCurrentEmotion(user);
+        // 1. 최신 감정 분석 결과 가져오기
+        org.example.localy.entity.EmotionWindowResult latestEmotion = emotionWindowResultRepository
+                .findFirstByUserIdAndCreatedAtBetweenOrderByCreatedAtDesc(
+                        user.getId(),
+                        java.time.LocalDate.now().atStartOfDay(),
+                        java.time.LocalDateTime.now()
+                ).orElseThrow(() -> new CustomException(PlaceErrorCode.EMOTION_DATA_NOT_FOUND));
 
-        if (Boolean.TRUE.equals(emotionData.getIsHomesickMode())) {
-            log.info("고향 기반 장소 추천 시작: userId={}", user.getId());
-            return recommendHomesickPlaces(user, latitude, longitude, emotionData);
+        // 2. DB에서 장소 조회
+        List<Place> nearbyPlaces = placeRepository.findAll();
+        log.info("DB에서 조회된 장소 개수: {}", nearbyPlaces.size());
+
+        // 3. DB가 비어있으면 API로 장소 수집
+        if (nearbyPlaces.isEmpty()) {
+            log.info("DB가 비어있어 VisitSeoul API로 장소를 수집합니다.");
+            List<TourApiDto.Data> apiList = tourApiService.getContentsList();
+
+            if (apiList == null || apiList.isEmpty()) {
+                log.error("VisitSeoul API에서 장소를 가져오지 못했습니다. 더미 데이터를 생성합니다.");
+
+                // 더미 장소 생성 (테스트용)
+                Place dummyPlace = Place.builder()
+                        .contentId("DUMMY_001")
+                        .title("서울 명동")
+                        .category("관광지")
+                        .thumbnailImage("https://example.com/dummy.jpg")
+                        .latitude(37.5636)
+                        .longitude(126.9838)
+                        .shortDescription("테스트용 더미 장소")
+                        .build();
+                nearbyPlaces = List.of(placeRepository.save(dummyPlace));
+            } else {
+                log.info("API에서 {}개의 장소를 가져왔습니다. DB에 저장합니다.", apiList.size());
+                nearbyPlaces = apiList.stream()
+                        .map(this::saveNewPlaceFromApi)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toList());
+                log.info("DB에 저장된 장소 개수: {}", nearbyPlaces.size());
+            }
         }
 
-        // dominantEmotion은 이제 GPT가 뽑은 세부 감정 단어이거나, Score에 따른 기존 감정 키워드 중 하나임
-        log.info("일반 감정 기반 장소 추천 시작: userId={}, emotionScore={}",
-                user.getId(), emotionData.getEmotionScore());
-        return recommendEmotionBasedPlaces(user, latitude, longitude, emotionData);
-    }
+        // 4. GPT 호출
+        log.info("GPT에 전달할 장소 개수: {}", nearbyPlaces.size());
+        GPTService.PlaceRecommendationResult aiResult = gptService.getRecommendedPlacesByEmotion(
+                nearbyPlaces,
+                latestEmotion.getEmotion(),
+                user.getInterests()
+        );
 
-    private RecommendDto.RecommendResponse recommendHomesickPlaces(
-            Users user, Double latitude, Double longitude, RecommendDto.EmotionData emotionData) {
+        log.info("GPT가 추천한 장소 개수: {}", aiResult.getRecommendedPlaces().size());
 
-        String nationality = user.getNationality() != null ? user.getNationality() : "아시아";
-
-        String baseNationalityKeyword = nationality.split(" ")[0];
-
-        List<String> keywordsToSearch;
-        if (baseNationalityKeyword.equals("직접") || baseNationalityKeyword.equals("아시아") || baseNationalityKeyword.equals("기타")) {
-            keywordsToSearch = List.of("아시아 마트", "국제", "외국인 거리", "전통 시장");
-        } else {
-            keywordsToSearch = List.of(baseNationalityKeyword);
-        }
-
-        List<Place> recommendedPlaces = new ArrayList<>();
-
-        for (String keyword : keywordsToSearch) {
-            List<TourApiDto.LocationBasedItem> apiPlaces = tourApiService.searchByKeyword(keyword, null);
-            for (TourApiDto.LocationBasedItem apiPlace : apiPlaces) {
-                try {
-                    Place place = saveOrUpdatePlace(apiPlace);
-                    if (place != null) {
-                        recommendedPlaces.add(place);
-                        if (recommendedPlaces.size() >= 5) break;
+        // 5. 추천 결과 가공
+        List<RecommendDto.PlaceRecommendation> updatedList = aiResult.getRecommendedPlaces().stream()
+                .map(rec -> {
+                    Place p = placeRepository.findById(rec.getPlaceId()).orElse(null);
+                    if (p == null) {
+                        log.warn("GPT가 추천한 Place ID={}를 DB에서 찾을 수 없습니다.", rec.getPlaceId());
+                        return null;
                     }
-                } catch (Exception e) {
-                    log.warn("장소 저장/업데이트 중 오류 발생 - contentId: {}, error: {}",
-                            apiPlace.getContentid(), e.getMessage());
-                }
-            }
-            if (recommendedPlaces.size() >= 5) break;
-        }
 
-        List<RecommendDto.MissionItem> missions = List.of();
+                    Place detailedPlace = saveOrUpdatePlace(p.getContentId());
 
-        // 추천 이유 개인화
-        String personalizedReason = (baseNationalityKeyword.equals("아시아") || baseNationalityKeyword.equals("기타"))
-                ? "고향의 정취를 느낄 수 있는 장소입니다."
-                : baseNationalityKeyword + "의 정취를 느낄 수 있는 장소입니다.";
-
-
-        // 응답 DTO 생성
-        List<RecommendDto.RecommendedPlace> result = recommendedPlaces.stream()
-                .map(place -> RecommendDto.RecommendedPlace.builder()
-                        .placeId(place.getId())
-                        .reason(personalizedReason)
-                        .matchScore(0.95)
-                        .build())
+                    return RecommendDto.PlaceRecommendation.builder()
+                            .placeId(p.getId())
+                            .contentId(detailedPlace.getContentId())
+                            .title(detailedPlace.getTitle())
+                            .category(detailedPlace.getCategory())
+                            .description(detailedPlace.getShortDescription())
+                            .reason(rec.getReason())
+                            .build();
+                })
+                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
 
-        emotionDataService.deactivateHomesickMode(user);
-        log.info("고향 모드 비활성화 완료: userId={}", user.getId());
+        log.info("최종 추천 장소 개수: {}", updatedList.size());
 
         return RecommendDto.RecommendResponse.builder()
-                .recommendedPlaces(result)
-                .missions(missions)
+                .emotion(latestEmotion.getEmotion())
+                .score(latestEmotion.getAvgScore())
+                .recommendations(updatedList)
                 .build();
     }
 
-    private RecommendDto.RecommendResponse recommendEmotionBasedPlaces(
-            Users user, Double latitude, Double longitude, RecommendDto.EmotionData emotionData) {
-
-        // dominantEmotion은 이제 GPT가 대화에서 추출한 가장 가까운 '세부 감정 단어'일 수 있습니다.
-        String dominantEmotionKeyword = emotionData.getDominantEmotion();
-
-        List<TourApiDto.LocationBasedItem> apiPlaces =
-                tourApiService.getLocationBasedList(latitude, longitude, 5000, null);
-
-        List<Place> allPlaces = new ArrayList<>();
-        for (TourApiDto.LocationBasedItem apiPlace : apiPlaces) {
-            try {
-                Place place = saveOrUpdatePlace(apiPlace);
-                if (place != null) {
-                    allPlaces.add(place);
-                }
-            } catch (Exception e) {
-                log.warn("장소 저장/업데이트 중 오류 발생 - contentId: {}, error: {}",
-                        apiPlace.getContentid(), e.getMessage());
-            }
-        }
-
-        if (allPlaces.isEmpty()) {
-            log.warn("주변 API에서 유효한 장소를 찾지 못했습니다. GPT 추천을 건너뜁니다.");
-            return RecommendDto.RecommendResponse.builder()
-                    .recommendedPlaces(List.of())
-                    .missions(List.of())
-                    .build();
-        }
-
-        GPTService.PlaceRecommendationResult aiResult =
-                gptService.getRecommendedPlacesByEmotion(
-                        allPlaces, dominantEmotionKeyword, user.getInterests());
-
-        List<GPTService.PlaceRecommendationResult.RecommendedPlace> aiRecommendedList =
-                aiResult.getRecommendedPlaces();
-
-        List<Long> recommendedPlaceIds = aiRecommendedList.stream()
-                .map(GPTService.PlaceRecommendationResult.RecommendedPlace::getPlaceId)
-                .filter(Objects::nonNull) // null ID 필터링
-                .collect(Collectors.toList());
-
-        Map<Long, Place> placeMap = placeRepository.findAllById(recommendedPlaceIds).stream()
-                .collect(Collectors.toMap(Place::getId, p -> p));
-
-        List<Place> recommendedPlaces = recommendedPlaceIds.stream()
-                .filter(placeMap::containsKey)
-                .map(placeMap::get)
-                .collect(Collectors.toList());
-
-        if (recommendedPlaces.isEmpty()) {
-            log.warn("GPT가 추천한 장소 {}개 중 DB에 존재하는 장소가 없어 미션 생성을 건너뜁니다.", aiRecommendedList.size());
-            return RecommendDto.RecommendResponse.builder()
-                    .recommendedPlaces(List.of())
-                    .missions(List.of())
-                    .build();
-        }
-
-        List<RecommendDto.MissionItem> missions = List.of();
-
-        // 응답 DTO 매핑
-        Map<Long, String> reasonMap = aiRecommendedList.stream()
-                .filter(rec -> rec.getPlaceId() != null)
-                .collect(Collectors.toMap(
-                        GPTService.PlaceRecommendationResult.RecommendedPlace::getPlaceId,
-                        GPTService.PlaceRecommendationResult.RecommendedPlace::getReason
-                ));
-        Map<Long, Double> scoreMap = aiRecommendedList.stream()
-                .filter(rec -> rec.getPlaceId() != null)
-                .collect(Collectors.toMap(
-                        GPTService.PlaceRecommendationResult.RecommendedPlace::getPlaceId,
-                        GPTService.PlaceRecommendationResult.RecommendedPlace::getMatchScore
-                ));
-
-        List<RecommendDto.RecommendedPlace> result = recommendedPlaces.stream()
-                .map(place -> RecommendDto.RecommendedPlace.builder()
-                        .placeId(place.getId())
-                        .reason(reasonMap.getOrDefault(place.getId(), generateRecommendReason(dominantEmotionKeyword, place.getCategory())))
-                        .matchScore(scoreMap.getOrDefault(place.getId(), 0.85))
-                        .build())
-                .collect(Collectors.toList());
-
-        return RecommendDto.RecommendResponse.builder()
-                .recommendedPlaces(result)
-                .missions(missions)
-                .build();
-    }
-
-    @Transactional
-    public Place saveOrUpdatePlace(TourApiDto.LocationBasedItem apiPlace) {
-
-        // 1. contentId 유효성 검사
-        if (!StringUtils.hasText(apiPlace.getContentid())) {
-            log.warn("TourAPI 응답에서 contentId 누락. title={}", apiPlace.getTitle());
-            throw new CustomException(PlaceErrorCode.TOUR_API_ERROR);
-        }
-
-        String contentId = apiPlace.getContentid();
-
-        // 2. 전화번호 정제
-        String cleanedTel = cleanPhoneNumber(apiPlace.getTel());
-
-        // 3. 기존 장소 있는지 확인
-        Optional<Place> existing = placeRepository.findByContentId(contentId);
-        if (existing.isPresent()) return existing.get();
-
-        try {
-            // 4. 상세 정보 조회
-            TourApiDto.CommonItem commonItem = tourApiService.getCommonDetail(contentId);
-            TourApiDto.IntroItem introItem = tourApiService.getIntroDetail(contentId, apiPlace.getContenttypeid());
-
-            // 5. 카테고리 처리
-            String category = CategoryMapper.getCategoryName(apiPlace.getContenttypeid(), apiPlace.getCat3());
-
-            // 6. 오프닝 아워 파싱 (1번 방식: 그냥 텍스트 저장)
-            String openingHours = extractOpeningHoursSafe(introItem, apiPlace.getContenttypeid());
-
-            // 7. Place 엔티티 생성
-            Place place = Place.builder()
-                    .contentId(contentId)
-                    .contentTypeId(String.valueOf(apiPlace.getContenttypeid()))
-                    .title(apiPlace.getTitle())
-                    .category(category)
-                    .address(apiPlace.getAddr1() != null ? apiPlace.getAddr1() : "")
-                    .addressDetail(apiPlace.getAddr2() != null ? apiPlace.getAddr2() : "")
-                    .latitude(parseDouble(apiPlace.getMapy()))
-                    .longitude(parseDouble(apiPlace.getMapx()))
-                    .phoneNumber(cleanedTel)
-                    .openingHours(openingHours != null ? openingHours : "")
-                    .thumbnailImage(selectThumbnail(apiPlace))
-                    .longDescription(commonItem != null && commonItem.getOverview() != null
-                            ? commonItem.getOverview()
-                            : "")
-                    .bookmarkCount(0)
-                    .build();
-
-            // 8. 저장
-            Place saved = placeRepository.save(place);
-            log.info("Place 저장 성공 - placeId={}, contentId={}", saved.getId(), contentId);
-
-            // 9. 이미지 저장
-            saveImagesSafe(saved, contentId);
-
-            return saved;
-
-        } catch (Exception e) {
-            log.error("Place 저장 실패 - contentId={}, error={}", contentId, e.getMessage(), e);
-            throw e;
-        }
-    }
-
-
-    private String cleanPhoneNumber(String phoneNumber) {
-        if (phoneNumber == null || phoneNumber.trim().isEmpty()) {
+    private Place saveNewPlaceFromApi(TourApiDto.Data d) {
+        if (d == null || d.getCid() == null) {
+            log.warn("유효하지 않은 API 데이터입니다.");
             return null;
         }
-        return phoneNumber.trim();
+
+        return placeRepository.findByContentId(d.getCid())
+                .orElseGet(() -> {
+                    Place newPlace = Place.builder()
+                            .contentId(d.getCid())
+                            .title(d.getPost_sj() != null ? d.getPost_sj() : "제목 없음")
+                            .category(d.getCate_depth() != null ? d.getCate_depth() : "기타")
+                            .thumbnailImage(d.getMain_img())
+                            .shortDescription(d.getSumry())
+                            .build();
+
+                    Place saved = placeRepository.save(newPlace);
+                    log.info("새 장소 저장 완료. cid: {}, title: {}", saved.getContentId(), saved.getTitle());
+                    return saved;
+                });
     }
 
-    private Double parseDouble(String value) {
-        if (value == null || value.trim().isEmpty()) {
-            return 0.0;
+    public Place saveOrUpdatePlace(String cid) {
+        String redisKey = "place_detail:" + cid;
+        Place cachedPlace = (Place) redisTemplate.opsForValue().get(redisKey);
+        if (cachedPlace != null) return cachedPlace;
+
+        Optional<Place> existingPlace = placeRepository.findByContentId(cid);
+
+        // 상세정보가 이미 있으면 DB에서 반환
+        if (existingPlace.isPresent() && StringUtils.hasText(existingPlace.get().getLongDescription())) {
+            redisTemplate.opsForValue().set(redisKey, existingPlace.get(), 1, TimeUnit.DAYS);
+            return existingPlace.get();
         }
-        try {
-            return Double.parseDouble(value);
-        } catch (NumberFormatException e) {
-            log.warn("Double 파싱 실패: {}", value);
-            return 0.0;
+
+        // 상세정보 없을 때만 VisitSeoul API 호출
+        TourApiDto response = tourApiService.getPlaceDetailByCid(cid);
+        if (response == null || response.getData() == null) {
+            log.warn("장소 상세 정보를 가져올 수 없습니다. cid: {}", cid);
+            return existingPlace.orElse(null);
         }
-    }
 
-    private String selectThumbnail(TourApiDto.LocationBasedItem apiPlace) {
-        if (StringUtils.hasText(apiPlace.getFirstimage2())) {
-            return apiPlace.getFirstimage2();
+        TourApiDto.Data d = response.getData();
+        String cleanDesc = d.getPost_desc() != null ? d.getPost_desc().replaceAll("<[^>]*>", " ").trim() : "";
+
+        Place place = existingPlace.orElseGet(() -> Place.builder().build());
+        place.setContentId(d.getCid());
+        place.setTitle(d.getPost_sj() != null ? d.getPost_sj() : "제목 없음");
+        place.setCategory(d.getCate_depth() != null ? d.getCate_depth() : "기타");
+
+        // null 처리 추가
+        if (d.getTraffic() != null) {
+            place.setAddress(d.getTraffic().getNew_adres());
+            if (d.getTraffic().getMap_position_y() != null && d.getTraffic().getMap_position_x() != null) {
+                try {
+                    place.setLatitude(Double.parseDouble(d.getTraffic().getMap_position_y()));
+                    place.setLongitude(Double.parseDouble(d.getTraffic().getMap_position_x()));
+                } catch (NumberFormatException e) {
+                    log.warn("좌표 파싱 실패. cid: {}", cid);
+                }
+            }
         }
-        if (StringUtils.hasText(apiPlace.getFirstimage())) {
-            return apiPlace.getFirstimage();
+
+        if (d.getExtra() != null) {
+            place.setOpeningHours(d.getExtra().getCmmn_use_time());
+            place.setPhoneNumber(d.getExtra().getCmmn_telno());
         }
-        return null;
-    }
 
-    private void saveImagesSafe(Place place, String contentId) {
-        // try { // 제거
-        List<TourApiDto.ImageItem> images = tourApiService.getImages(contentId);
+        place.setLongDescription(cleanDesc);
+        place.setShortDescription(d.getSumry() != null ? d.getSumry() : "");
+        place.setThumbnailImage(d.getMain_img() != null ? d.getMain_img() : "");
 
-        if (images == null || images.isEmpty()) return;
-
-        int order = 0;
-        for (TourApiDto.ImageItem img : images) {
-            if (!StringUtils.hasText(img.getOriginimgurl())) continue;
-
-            PlaceImage pi = PlaceImage.builder()
-                    .place(place)
-                    .imageUrl(img.getOriginimgurl())
-                    .thumbnailUrl(img.getSmallimageurl())
-                    .displayOrder(order++)
-                    .build();
-
-            placeImageRepository.save(pi);
-        }
-    }
-
-
-    private String extractOpeningHoursSafe(TourApiDto.IntroItem introItem, String typeId) {
-        if (introItem == null) return "";
-
-        String c = String.valueOf(typeId);
-
-        return switch (c) {
-            case "12" -> Optional.ofNullable(introItem.getUsetime()).orElse("");
-            case "14" -> Optional.ofNullable(introItem.getUsetimeculture()).orElse("");
-            case "39" -> Optional.ofNullable(introItem.getOpentimefood()).orElse("");
-            case "38" -> Optional.ofNullable(introItem.getOpentime()).orElse("");
-            default -> "";
-        };
-    }
-
-
-    private String generateRecommendReason(String emotionKeyword, String category) {
-        return String.format("%s 느낌에 어울리는 장소입니다", emotionKeyword);
+        Place savedPlace = placeRepository.save(place);
+        redisTemplate.opsForValue().set(redisKey, savedPlace, 1, TimeUnit.DAYS);
+        return savedPlace;
     }
 }

@@ -134,17 +134,31 @@ public class GPTService {
         }
 
         try {
+            // 실제 Place ID 목록 명확히 전달
             String placesJson = availablePlaces.stream()
                     .map(p -> String.format("{\"id\":%d, \"name\":\"%s\", \"category\":\"%s\"}",
                             p.getId(), p.getTitle(), p.getCategory()))
                     .collect(Collectors.joining(", ", "[", "]"));
 
+            // 실제 사용 가능한 ID 목록
+            String availableIds = availablePlaces.stream()
+                    .map(p -> String.valueOf(p.getId()))
+                    .collect(Collectors.joining(", "));
+
             String systemPrompt = String.format(
-                    "너는 사용자 맞춤형 여행 가이드 AI야. 다음 정보를 참고하여 가장 적합한 최대 5개의 장소 ID와 추천 이유, 매칭 점수를 JSON 형식으로 반환해줘" +
-                            "사용자 감정: %s. 관심사: %s. " +
-                            "응답은 반드시 {\"recommendedPlaces\": [{id: Long, reason: String, matchScore: Double}]} 형태여야함" +
-                            "입력된 장소 목록: %s",
-                    emotion, interests != null ? interests : "없음", placesJson
+                    "너는 사용자 맞춤형 여행 가이드 AI야. 다음 정보를 참고하여 가장 적합한 장소를 최대 5개 추천해줘.\n\n" +
+                            "**중요**: 반드시 아래 '사용 가능한 ID' 목록에서만 선택해야 해:\n" +
+                            "사용 가능한 ID: [%s]\n\n" +
+                            "사용자 감정: %s\n" +
+                            "관심사: %s\n\n" +
+                            "장소 목록:\n%s\n\n" +
+                            "응답 형식은 반드시 다음과 같아야 해:\n" +
+                            "{\"recommendedPlaces\": [{\"id\": <실제 ID 숫자>, \"reason\": \"추천 이유\", \"matchScore\": 0.0~1.0 사이 점수}]}\n\n" +
+                            "주의: id는 반드시 위의 '사용 가능한 ID' 목록에 있는 숫자만 사용해야 해!",
+                    availableIds,
+                    emotion,
+                    interests != null ? interests : "없음",
+                    placesJson
             );
 
             OpenAiService service = new OpenAiService(apiKey);
@@ -153,19 +167,39 @@ public class GPTService {
                     .model("gpt-3.5-turbo")
                     .messages(List.of(
                             new ChatMessage("system", systemPrompt),
-                            new ChatMessage("user", "감정에 맞는 최대 5곳을 추천하고 이유와 매칭 점수를 포함한 JSON을 반환해줘.")
+                            new ChatMessage("user", "감정에 맞는 장소를 최대 5곳 추천하고, 반드시 제공된 ID 목록에서만 선택해서 JSON으로 반환해줘.")
                     ))
                     .temperature(0.7)
-                    .maxTokens(400)
+                    .maxTokens(600)
                     .build();
 
             ChatCompletionResult result = service.createChatCompletion(request);
             String jsonContent = result.getChoices().get(0).getMessage().getContent().trim();
-            return parseRecommendationJson(jsonContent);
+
+            log.info("GPT 원본 응답: {}", jsonContent);
+
+            PlaceRecommendationResult recommendation = parseRecommendationJson(jsonContent);
+
+            // 유효한 ID만 필터링
+            List<Long> validIds = availablePlaces.stream()
+                    .map(Place::getId)
+                    .collect(Collectors.toList());
+
+            List<PlaceRecommendationResult.RecommendedPlace> validRecommendations =
+                    recommendation.getRecommendedPlaces().stream()
+                            .filter(rec -> validIds.contains(rec.getPlaceId()))
+                            .collect(Collectors.toList());
+
+            log.info("필터링 전: {}, 필터링 후: {}",
+                    recommendation.getRecommendedPlaces().size(),
+                    validRecommendations.size());
+
+            return new PlaceRecommendationResult(validRecommendations);
 
         } catch (Exception e) {
             log.error("GPT 장소 추천 요청 처리 중 심각한 오류 발생: {}", e.getMessage(), e);
 
+            // 실패 시 첫 번째 장소 반환
             Place firstPlace = availablePlaces.get(0);
             return new PlaceRecommendationResult(List.of(
                     new PlaceRecommendationResult.RecommendedPlace(
