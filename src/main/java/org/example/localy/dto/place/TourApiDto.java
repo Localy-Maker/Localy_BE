@@ -1,22 +1,76 @@
 package org.example.localy.dto.place;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonSetter;
-import com.fasterxml.jackson.annotation.Nulls;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.*;
-
 import java.util.List;
 
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class TourApiDto {
+    // 단일 콘텐츠 조회용
+    private Data data;
 
-    // 최상위 응답 래퍼 추가 (API 실제 응답 구조)
+    // 목록 조회용 - Swagger 문서와 일치
+    private List<Data> list;  // 실제로는 이게 아니라 아래처럼 와야 함
+
+    // Paging 정보
+    private Paging paging;
+
+    @JsonProperty("result_code")
+    private Integer resultCode;
+
+    @JsonProperty("result_message")
+    private String resultMessage;
+
     @Getter
     @Setter
     @NoArgsConstructor
     @AllArgsConstructor
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class ApiResponse<T> {
-        private Response<T> response;  // ← "response" 래퍼 추가!
+    public static class Data {
+        private String cid;
+
+        @JsonProperty("lang_code_id")
+        private String langCodeId;
+
+        @JsonProperty("com_ctgry_sn")
+        private String comCtgrySn;
+
+        @JsonProperty("cate_depth")
+        private String cate_depth;
+
+        @JsonProperty("multi_lang_list")
+        private String multiLangList;
+
+        @JsonProperty("main_img")
+        private String main_img;
+
+        @JsonProperty("relate_img")
+        private List<String> relate_img;
+
+        @JsonProperty("post_sj")
+        private String post_sj;
+
+        private String sumry;
+
+        @JsonProperty("creat_dt_text")
+        private String creatDtText;
+
+        @JsonProperty("updt_dt_text")
+        private String updtDtText;
+
+        private List<String> tag;
+
+        @JsonProperty("post_desc")
+        private String post_desc;
+
+        private Extra extra;
+        private Traffic traffic;
+        private Tourist tourist;
     }
 
     @Getter
@@ -24,9 +78,18 @@ public class TourApiDto {
     @NoArgsConstructor
     @AllArgsConstructor
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class Response<T> {
-        private ResponseHeader header;
-        private ResponseBody<T> body;
+    public static class Extra {
+        @JsonProperty("cmmn_telno")
+        private String cmmn_telno;
+
+        @JsonProperty("cmmn_use_time")
+        private String cmmn_use_time;
+
+        @JsonProperty("trrsrt_use_chrge")
+        private String trrsrtUseChrge;
+
+        @JsonProperty("disabled_facility")
+        private List<String> disabledFacility;
     }
 
     @Getter
@@ -34,9 +97,20 @@ public class TourApiDto {
     @NoArgsConstructor
     @AllArgsConstructor
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class ResponseHeader {
-        private String resultCode;
-        private String resultMsg;
+    public static class Traffic {
+        private String adres;
+
+        @JsonProperty("new_zip_code")
+        private String newZipCode;
+
+        @JsonProperty("new_adres")
+        private String new_adres;
+
+        @JsonProperty("map_position_x")
+        private String map_position_x;
+
+        @JsonProperty("map_position_y")
+        private String map_position_y;
     }
 
     @Getter
@@ -44,131 +118,27 @@ public class TourApiDto {
     @NoArgsConstructor
     @AllArgsConstructor
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class ResponseBody<T> {
-        private Integer numOfRows;
+    public static class Tourist {
+        @JsonProperty("guidance_service")
+        private String guidanceService;
+
+        @JsonProperty("safe_mng")
+        private String safeMng;
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class Paging {
+        @JsonProperty("page_no")
         private Integer pageNo;
+
+        @JsonProperty("page_size")
+        private Integer pageSize;
+
+        @JsonProperty("total_count")
         private Integer totalCount;
-
-        @JsonSetter(value = "items", nulls = Nulls.AS_EMPTY)
-        private Items<T> items;
-    }
-
-    @Getter
-    @Setter
-    @NoArgsConstructor
-    @AllArgsConstructor
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class Items<T> {
-        private List<T> item;
-    }
-
-    @Getter
-    @Setter
-    @NoArgsConstructor
-    @AllArgsConstructor
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class LocationBasedItem {
-        private String contentid;
-        private String contenttypeid;
-        private String title;
-        private String addr1;
-        private String addr2;
-        private String mapx;
-        private String mapy;
-        private String firstimage;
-        private String firstimage2;
-        private String tel;
-        private String dist;
-        private String cat1;
-        private String cat2;
-        private String cat3;
-        private String areacode;
-        private String sigungucode;
-    }
-
-    @Getter
-    @Setter
-    @NoArgsConstructor
-    @AllArgsConstructor
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class CommonItem {
-        private String contentid;
-        private String contenttypeid;
-        private String title;
-        private String addr1;
-        private String addr2;
-        private String zipcode;
-        private String tel;
-        private String homepage;
-        private String overview;
-        private String firstimage;
-        private String firstimage2;
-        private String mapx;
-        private String mapy;
-        private String cat1;
-        private String cat2;
-        private String cat3;
-    }
-
-    @Getter
-    @Setter
-    @NoArgsConstructor
-    @AllArgsConstructor
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class IntroItem {
-        private String contentid;
-        private String contenttypeid;
-
-        // 관광지 (12)
-        private String infocenter;
-        private String restdate;
-        private String usetime;
-        private String parking;
-        private String chkpet;
-
-        // 문화시설 (14)
-        private String infocenterculture;
-        private String restdateculture;
-        private String usetimeculture;
-        private String parkingculture;
-        private String parkingfee;
-        private String chkpetculture;
-
-        // 음식점/카페 (39)
-        private String infocenterfood;
-        private String restdatefood;
-        private String opentimefood;
-        private String parkingfood;
-        private String firstmenu;
-        private String treatmenu;
-
-        // 쇼핑 (38)
-        private String infocentershopping;
-        private String opentime;
-        private String restdateshopping;
-        private String parkingshopping;
-    }
-
-    @Getter
-    @Setter
-    @NoArgsConstructor
-    @AllArgsConstructor
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class ImageItem {
-        private String contentid;
-        private String originimgurl;
-        private String smallimageurl;
-        private String serialnum;
-    }
-
-    @Getter
-    @Setter
-    @NoArgsConstructor
-    @AllArgsConstructor
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class AreaCodeItem {
-        private String code;
-        private String name;
-        private String rnum;
     }
 }

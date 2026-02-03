@@ -64,8 +64,28 @@ public class RecommendDto {
     @AllArgsConstructor
     @Builder
     public static class RecommendResponse {
-        private List<RecommendedPlace> recommendedPlaces;
+        private String emotion;
+        private Double score;
+        private List<PlaceRecommendation> recommendations;
         private List<MissionItem> missions;
+
+        public List<PlaceRecommendation> getRecommendedPlaces() {
+            return this.recommendations;
+        }
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class PlaceRecommendation {
+        private Long placeId;
+        private String contentId;
+        private String title;
+        private String category;
+        private String description;
+        private String reason;
     }
 
     @Getter
