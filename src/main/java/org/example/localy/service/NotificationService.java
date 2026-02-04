@@ -4,15 +4,19 @@ package org.example.localy.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import org.example.localy.common.exception.CustomException;
+import org.example.localy.common.exception.errorCode.AuthErrorCode;
 import org.example.localy.common.response.BaseResponse;
 import org.example.localy.dto.NotificationDto;
 import org.example.localy.dto.admin.CreateAnnouncementRequest;
 import org.example.localy.entity.Notification;
 import org.example.localy.entity.NotificationRead;
 import org.example.localy.entity.Users;
+import org.example.localy.entity.place.Mission;
 import org.example.localy.repository.NotificationReadRepository;
 import org.example.localy.repository.NotificationRepository;
 import org.example.localy.repository.UserRepository;
+import org.example.localy.repository.place.MissionRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -20,10 +24,14 @@ import org.springframework.messaging.simp.user.SimpUserRegistry;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
+
+import static org.example.localy.common.exception.errorCode.AuthErrorCode.USER_NOT_FOUND;
+import static org.example.localy.common.exception.errorCode.MissionErrorCode.MISSION_NOT_FOUND;
 
 @Service
 @Slf4j
@@ -35,6 +43,8 @@ public class NotificationService {
     private final UserRepository userRepository;
     private final RedisTemplate<String, String> redisTemplate;
     private final SimpMessagingTemplate messagingTemplate;
+    private final MissionRepository missionRepository;
+
     @Autowired
     private SimpUserRegistry simpUserRegistry;
 
@@ -135,10 +145,13 @@ public class NotificationService {
     }
 
 
-    public void createGeneralNotice(Notification.GeneralNoticeType type, Long userId) {
+    public void createGeneralNotice(Notification.GeneralNoticeType type, Long id) {
+
+        Notification notification;
+        Users user;
 
         if (type == Notification.GeneralNoticeType.LASTLOGINTIME) {
-            Notification notification = Notification.builder()
+            notification = Notification.builder()
                     .title("[Localy 알림]\n똑똑똑! 오늘 하루는 어떠신가요?")
                     .body("낯선 곳에서 고생한 당신의 오늘 하루는 어떠신가요? \nLocaly가 당신의 모든 감정 변화를 이해하고 따뜻한 위로를 드릴 준비가 되어 있어요. 😊")
                     .type(Notification.NotificationType.GENERAL)
@@ -149,7 +162,7 @@ public class NotificationService {
             Long notificationId = notification.getId();  // ← 생성된 ID
             Notification savedNotification = notificationRepository.getReferenceById(notificationId);
 
-            Users user = userRepository.findById(userId).orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
+            user = userRepository.findById(id).orElseThrow(() -> new CustomException(USER_NOT_FOUND));
 
             // 3) NotificationRead 생성
             NotificationRead readRow = NotificationRead.builder()
@@ -162,40 +175,68 @@ public class NotificationService {
 
             log.info("✨LastLoginTime 알림 발송 완료");
 
-            String key = "localy:alarm:unread:";
+        }
+        else {
 
-            if (!redisTemplate.hasKey(key + user.getId())) {
-                // DB에서 읽지 않은 알림 개수 조회
-                Long unreadCount = notificationReadRepository.countByUserIdAndIsReadFalse(user.getId());
-                log.info("Unread count for user {} is {}", user.getId(), unreadCount);
+            Mission mission = missionRepository.findById(id).orElseThrow(() -> new CustomException(MISSION_NOT_FOUND));
 
-                // Redis에 초기값 세팅
-                redisTemplate.opsForValue().set(key + user.getId(), unreadCount.toString());
-            } else {
-                redisTemplate.opsForValue().increment(key + user.getId(), 1);
-            }
-
-            String redisValue = redisTemplate.opsForValue().get(key + user.getId());
-            String unreadCounts = redisValue == null ? "0" : redisValue;
-
-
-            log.info("Connected user: {}", user);
-
-
-            messagingTemplate.convertAndSend(
-                    "/topic/alarm/unreadCount/" + user.getId(),
-                    unreadCounts
-            );
-
-            CreateAnnouncementRequest dto = CreateAnnouncementRequest.builder()
-                    .title(notification.getTitle())
-                    .content(notification.getBody())
+            notification = Notification.builder()
+                    .title("[Localy 알림]\n⏰ 미션 마감 임박! Localy가 추천하는 미션을 확인해보세요.")
+                    .body("로컬 미션 '"+ mission.getTitle() +"'완료까지 이제 3시간 남았습니다! \n간단한 인증으로 "+ mission.getPoints() +" 포인트를 획득할 기회를 놓치지 마세요.")
+                    .type(Notification.NotificationType.GENERAL)
                     .build();
 
-            messagingTemplate.convertAndSend("/topic/alarm/receiveNotice", dto);
+            notificationRepository.save(notification);
+
+            Long notificationId = notification.getId();  // ← 생성된 ID
+            Notification savedNotification = notificationRepository.getReferenceById(notificationId);
+
+            user = userRepository.findById(mission.getUser().getId()).orElseThrow(() -> new CustomException(USER_NOT_FOUND));
+
+            // 3) NotificationRead 생성
+            NotificationRead readRow = NotificationRead.builder()
+                    .user(user)
+                    .notification(savedNotification)
+                    .isRead(false)
+                    .build();
+
+            notificationReadRepository.save(readRow);
+
+            log.info("✨MissionTime 알림 발송 완료");
 
         }
 
+        String key = "localy:alarm:unread:";
+
+        if (!redisTemplate.hasKey(key + user.getId())) {
+            // DB에서 읽지 않은 알림 개수 조회
+            Long unreadCount = notificationReadRepository.countByUserIdAndIsReadFalse(user.getId());
+            log.info("Unread count for user {} is {}", user.getId(), unreadCount);
+
+            // Redis에 초기값 세팅
+            redisTemplate.opsForValue().set(key + user.getId(), unreadCount.toString());
+        } else {
+            redisTemplate.opsForValue().increment(key + user.getId(), 1);
+        }
+
+        String redisValue = redisTemplate.opsForValue().get(key + user.getId());
+        String unreadCounts = redisValue == null ? "0" : redisValue;
+
+
+        log.info("Connected user: {}", user);
+
+
+        messagingTemplate.convertAndSend(
+                "/topic/alarm/unreadCount/" + user.getId(),
+                unreadCounts
+        );
+
+        CreateAnnouncementRequest dto = CreateAnnouncementRequest.builder()
+                .title(notification.getTitle())
+                .content(notification.getBody())
+                .build();
+
+        messagingTemplate.convertAndSend("/topic/alarm/receiveNotice", dto);
 
     }
 }

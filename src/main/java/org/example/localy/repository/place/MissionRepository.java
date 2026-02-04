@@ -32,4 +32,13 @@ public interface MissionRepository extends JpaRepository<Mission, Long> {
     @Transactional
     @Query("DELETE FROM Mission m WHERE m.expiresAt < :now")
     int deleteExpiredMissions(@Param("now") LocalDateTime now);
+
+    @Query("SELECT m FROM Mission m WHERE m.isCompleted = false AND m.expiresAt > :now AND m.expiresAt <= :threeHoursLater")
+    List<Mission> findCompletedMissionsExpiringSoon(
+            @Param("now") LocalDateTime now,
+            @Param("threeHoursLater") LocalDateTime threeHoursLater
+    );
+
+    @Query("SELECT m.id FROM Mission m WHERE m.expiresAt < :now")
+    List<Long> findExpiredMissionIds(@Param("now") LocalDateTime now);
 }
