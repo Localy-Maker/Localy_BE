@@ -70,6 +70,10 @@ public class Users {
     @Column(name = "onboarding_completed")
     private Boolean onboardingCompleted = false; // 온보딩 완료 여부
 
+    // 마지막 접속 시간
+    @Column(name = "last_login_time", length = 100)
+    private LocalDateTime lastLoginTime;
+
     public enum AuthProvider {
         LOCAL, GOOGLE
     }

@@ -18,6 +18,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.Collections;
 
 @Slf4j
@@ -61,6 +62,7 @@ public class AuthService {
                 .nickname(request.getNickname())
                 .authProvider(Users.AuthProvider.LOCAL)
                 .points(0)
+                .lastLoginTime(LocalDateTime.now())
                 .build();
 
         Users savedUser = userRepository.save(user);
@@ -101,6 +103,8 @@ public class AuthService {
         // JWT 토큰 생성
         String accessToken = jwtUtil.generateAccessToken(user.getId(), user.getEmail());
         String refreshToken = jwtUtil.generateRefreshToken(user.getId());
+
+        redisTemplate.opsForSet().remove("user:noActivity", user.getId().toString());
 
         return AuthDto.AuthResponse.builder()
                 .accessToken(accessToken)
@@ -148,6 +152,11 @@ public class AuthService {
             String accessToken = jwtUtil.generateAccessToken(user.getId(), user.getEmail());
             String refreshToken = jwtUtil.generateRefreshToken(user.getId());
 
+            user.setLastLoginTime(LocalDateTime.now());
+            log.info("\uD83D\uDC40최근 로그인 시각 업데이트 완료");
+
+            redisTemplate.opsForSet().remove("user:noActivity", user.getId().toString());
+
             return AuthDto.AuthResponse.builder()
                     .accessToken(accessToken)
                     .refreshToken(refreshToken)
@@ -175,6 +184,7 @@ public class AuthService {
                 .authProvider(Users.AuthProvider.GOOGLE)
                 .providerId(providerId)
                 .points(0)
+                .lastLoginTime(LocalDateTime.now())
                 .build();
 
         Users savedUser = userRepository.save(user);
@@ -256,4 +266,13 @@ public class AuthService {
             throw new CustomException(AuthErrorCode.INTERNAL_SERVER_ERROR);
         }
     }
+
+    @Transactional
+    public void updateLastLoginTime(AuthDto.AuthResponse response){
+        Users user = userRepository.findById(response.getUserId()).orElseThrow(() -> new CustomException(AuthErrorCode.USER_NOT_FOUND));
+        user.setLastLoginTime(LocalDateTime.now());
+
+        log.info("\uD83D\uDC40최근 로그인 시각 업데이트 완료");
+    }
+
 }
