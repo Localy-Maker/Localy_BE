@@ -37,5 +37,10 @@ public class Notification {
         ANNOUNCEMENT,
         GENERAL
     }
+    
+    public enum GeneralNoticeType {
+        LASTLOGINTIME,
+        MISSIONTIME
+    }
 }
 

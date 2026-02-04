@@ -22,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -131,5 +132,70 @@ public class NotificationService {
         redisTemplate.opsForValue().set("localy:alarm:unread:"+user.getId(),"0");
 
         return notifications;
+    }
+
+
+    public void createGeneralNotice(Notification.GeneralNoticeType type, Long userId) {
+
+        if (type == Notification.GeneralNoticeType.LASTLOGINTIME) {
+            Notification notification = Notification.builder()
+                    .title("[Localy 알림]\n똑똑똑! 오늘 하루는 어떠신가요?")
+                    .body("낯선 곳에서 고생한 당신의 오늘 하루는 어떠신가요? \nLocaly가 당신의 모든 감정 변화를 이해하고 따뜻한 위로를 드릴 준비가 되어 있어요. 😊")
+                    .type(Notification.NotificationType.GENERAL)
+                    .build();
+
+            notificationRepository.save(notification);
+
+            Long notificationId = notification.getId();  // ← 생성된 ID
+            Notification savedNotification = notificationRepository.getReferenceById(notificationId);
+
+            Users user = userRepository.findById(userId).orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
+
+            // 3) NotificationRead 생성
+            NotificationRead readRow = NotificationRead.builder()
+                    .user(user)
+                    .notification(savedNotification)
+                    .isRead(false)
+                    .build();
+
+            notificationReadRepository.save(readRow);
+
+            log.info("✨LastLoginTime 알림 발송 완료");
+
+            String key = "localy:alarm:unread:";
+
+            if (!redisTemplate.hasKey(key + user.getId())) {
+                // DB에서 읽지 않은 알림 개수 조회
+                Long unreadCount = notificationReadRepository.countByUserIdAndIsReadFalse(user.getId());
+                log.info("Unread count for user {} is {}", user.getId(), unreadCount);
+
+                // Redis에 초기값 세팅
+                redisTemplate.opsForValue().set(key + user.getId(), unreadCount.toString());
+            } else {
+                redisTemplate.opsForValue().increment(key + user.getId(), 1);
+            }
+
+            String redisValue = redisTemplate.opsForValue().get(key + user.getId());
+            String unreadCounts = redisValue == null ? "0" : redisValue;
+
+
+            log.info("Connected user: {}", user);
+
+
+            messagingTemplate.convertAndSend(
+                    "/topic/alarm/unreadCount/" + user.getId(),
+                    unreadCounts
+            );
+
+            CreateAnnouncementRequest dto = CreateAnnouncementRequest.builder()
+                    .title(notification.getTitle())
+                    .content(notification.getBody())
+                    .build();
+
+            messagingTemplate.convertAndSend("/topic/alarm/receiveNotice", dto);
+
+        }
+
+
     }
 }

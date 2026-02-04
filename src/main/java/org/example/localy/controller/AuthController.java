@@ -7,6 +7,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.example.localy.common.response.BaseResponse;
 import org.example.localy.dto.AuthDto;
+import org.example.localy.entity.Users;
+import org.example.localy.repository.UserRepository;
 import org.example.localy.service.AuthService;
 import org.example.localy.service.EmailVerificationService;
 import org.example.localy.subscriber.RedisSubscriber;
@@ -14,6 +16,8 @@ import org.example.localy.subscriber.RedisSubscriberInitializer;
 import org.example.localy.util.JwtUtil;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.beans.factory.annotation.Value;
+
+import java.time.LocalDateTime;
 
 @Tag(name = "Auth", description = "인증 관련 API")
 @RestController
@@ -24,6 +28,7 @@ public class AuthController {
     private final AuthService authService;
     private final EmailVerificationService emailVerificationService;
     private final JwtUtil jwtUtil;
+    private final UserRepository userRepository;
     private final RedisSubscriber redisSubscriber;
     private final RedisSubscriberInitializer subscriberInitializer;
 
@@ -100,6 +105,8 @@ public class AuthController {
         String channel = "localy:chat:bot:" + response.getUserId();
         redisSubscriber.subscribe(channel);
 
+        authService.updateLastLoginTime(response);
+
         return BaseResponse.success("로그인 완료", response);
     }
 
@@ -113,6 +120,8 @@ public class AuthController {
         // 신규 가입한 유저의 1대1 채널 구독 시작
         String channel = "localy:chat:bot:" + response.getUserId();
         redisSubscriber.subscribe(channel);
+
+        authService.updateLastLoginTime(response);
 
         return BaseResponse.success("Google 로그인 완료", response);
     }
