@@ -24,7 +24,7 @@ public class ChatCleanupScheduler {
     private final RedisTemplate<String, String> redisTemplate;
     private final RedisTemplate<String, Object> objectRedisTemplate;
 
-    @Scheduled(cron = "0 0 0 * * *") // 매일 08:18
+    @Scheduled(cron = "0 0 0 * * *") // 매일 00:00
     @Transactional
     public void cleanupOldChats() {
 
@@ -40,10 +40,10 @@ public class ChatCleanupScheduler {
                     .distinct() // 중복 제거
                     .toList();
 
-            if (dates.size() <= 1) continue; // 최근 1개만 유지 → 삭제할 게 없음
+            if (dates.size() <= 6) continue; // 최근 1개만 유지 → 삭제할 게 없음
 
             // 최근 1개 제외한 나머지 날짜
-            List<LocalDate> toDelete = dates.subList(1, dates.size());
+            List<LocalDate> toDelete = dates.subList(6, dates.size());
 
             for (LocalDate date : toDelete) {
                 chatBotRepository.deleteMessagesByUserIdAndDate(user.getId(), date);
@@ -55,7 +55,7 @@ public class ChatCleanupScheduler {
         log.info("✨ DB 청소 완료");
     }
 
-    @Scheduled(cron = "0 0 0 * * *") // 매일 08:18
+    @Scheduled(cron = "0 0 0 * * *") // 매일 00:00
     @Transactional
     public void resetEmotion() {
         String keyPrefix = "localy:emotion:";

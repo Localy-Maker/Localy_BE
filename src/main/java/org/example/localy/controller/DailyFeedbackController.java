@@ -37,7 +37,7 @@ public class DailyFeedbackController {
     private final MonthlyEmotionService monthlyEmotionService;
 
     @Operation(
-            summary = "하루 데일리피드백 - 오늘 하루 3시간씩 감정수치변화를 보여줍니다.",
+            summary = "하루 데일리피드백 - 오늘 하루 1시간씩 감정수치변화를 보여줍니다.",
             description = """
           """
     )

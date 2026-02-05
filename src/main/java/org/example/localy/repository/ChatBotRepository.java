@@ -22,14 +22,23 @@ public interface ChatBotRepository extends JpaRepository<ChatMessage, Long> {
             "AND DATE(c.createdAt) = CURRENT_DATE")
     List<ChatMessage> findTodayMessagesByUserId(@Param("userId") Long userId);
 
-    @Query("""
+    /*@Query("""
     SELECT c.createdAt
     FROM ChatMessage c
     WHERE c.userId = :userId
       AND c.createdAt < CURRENT_DATE
     ORDER BY c.createdAt DESC
 """)
-    List<LocalDateTime> findLastChatDate(@Param("userId") Long userId, Pageable pageable);
+    List<LocalDateTime> findLastChatDate(@Param("userId") Long userId, Pageable pageable);*/
+
+    @Query("""
+    SELECT DISTINCT CAST(c.createdAt AS LocalDate)
+    FROM ChatMessage c
+    WHERE c.userId = :userId
+      AND c.createdAt < CURRENT_DATE
+    ORDER BY CAST(c.createdAt AS LocalDate) DESC
+""")
+    List<LocalDate> findLastChatDate(@Param("userId") Long userId, Pageable pageable);
 
     @Query("SELECT c " +
             "FROM ChatMessage c " +
