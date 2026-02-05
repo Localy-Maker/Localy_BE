@@ -17,6 +17,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -36,11 +37,11 @@ public class EmotionScheduler {
     private final RedisTemplate<String, String> redisTemplate;
 
     // 3분마다 실행 (실 환경에서는 3시간)
-    @Scheduled(cron = "0 0 */3 * * *")
+    @Scheduled(cron = "0 0 * * * *")
     public void analyzeWindow() {
 
         LocalDateTime now = LocalDateTime.now();
-        LocalDateTime start = now.minusHours(3);
+        LocalDateTime start = now.minusHours(1);
         String window = getCurrentWindow();
 
         // 최근 3시간 메시지
@@ -65,7 +66,7 @@ public class EmotionScheduler {
                         .filter(l -> l.getEmotionAfter() != null)
                         .toList();
 
-                if (!logs.isEmpty()) {
+                /*if (!logs.isEmpty()) {
                     // ⭐ 평균 점수 계산
                     double avgScore = logs.stream()
                             .mapToDouble(EmotionLogDto::getEmotionAfter)
@@ -73,6 +74,40 @@ public class EmotionScheduler {
                             .orElse(0.0);
 
                     // ⭐ 변경된 메서드에 맞게 avgScore 전달
+                    emotionAnalysisService.saveWindowResult(userId, window, avgScore);
+                    continue;
+                }*/
+
+                if (!logs.isEmpty()) {
+
+                    // 가중치와 점수를 함께 계산
+                    class WeightedScore {
+                        double score;
+                        double weight;
+                        WeightedScore(double score, double weight) {
+                            this.score = score;
+                            this.weight = weight;
+                        }
+                    }
+
+                    List<WeightedScore> weightedScores = logs.stream()
+                            .map(log -> {
+                                long minutesAgo = Duration.between(log.getCreatedAt(), now).toMinutes();
+                                double weight = Math.max(0, 60 - minutesAgo);
+                                return new WeightedScore(log.getEmotionAfter(), weight);
+                            })
+                            .toList();
+
+                    double totalWeightedScore = weightedScores.stream()
+                            .mapToDouble(ws -> ws.score * ws.weight)
+                            .sum();
+
+                    double totalWeight = weightedScores.stream()
+                            .mapToDouble(ws -> ws.weight)
+                            .sum();
+
+                    double avgScore = totalWeight > 0 ? totalWeightedScore / totalWeight : 0.0;
+
                     emotionAnalysisService.saveWindowResult(userId, window, avgScore);
                     continue;
                 }
@@ -133,7 +168,7 @@ public class EmotionScheduler {
     public String getCurrentWindow() {
         int hour = LocalDateTime.now().getHour();
         int start = (hour / 3) * 3;
-        int end = start + 3;
+        int end = start + 1;
         return String.format("%02d-%02d", start, end);
     }
 }
