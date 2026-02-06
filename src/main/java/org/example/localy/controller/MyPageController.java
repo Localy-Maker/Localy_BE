@@ -4,6 +4,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.example.localy.common.exception.CustomException;
+import org.example.localy.common.exception.errorCode.AuthErrorCode;
 import org.example.localy.common.response.BaseResponse;
 import org.example.localy.dto.AuthDto;
 import org.example.localy.dto.MyPageDto;
@@ -150,9 +152,10 @@ public class MyPageController {
             @RequestHeader("Authorization") String authorizationHeader,
             @RequestParam String planType
     ) {
-        Long userId = getUserIdFromHeader(authorizationHeader);
+        String token = authorizationHeader.replace("Bearer ", "");
+        Long userId = jwtUtil.getUserIdFromToken(token);
         Users user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
+                .orElseThrow(() -> new CustomException(AuthErrorCode.USER_NOT_FOUND));
 
         missionService.purchasePremium(user, planType);
         return BaseResponse.success("프리미엄 구독 구매가 완료되었습니다.", null);

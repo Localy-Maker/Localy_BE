@@ -26,5 +26,9 @@ public class MissionArchive {
     private String imageUrl;
 
     @Column(nullable = false)
-    private LocalDate archivedDate; // 사진이 저장된 날짜 (판별 기준)
+    private LocalDate archivedDate; // 달력상 날짜
+
+    @Builder.Default
+    @Column(nullable = false)
+    private Boolean isThumbnail = false; // 먼슬리 썸네일 노출 여부
 }

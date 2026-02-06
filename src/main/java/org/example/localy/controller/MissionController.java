@@ -1,14 +1,21 @@
 package org.example.localy.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.example.localy.common.exception.CustomException;
+import org.example.localy.common.exception.errorCode.AuthErrorCode;
 import org.example.localy.common.response.BaseResponse;
+import org.example.localy.dto.mission.MissionArchiveDto;
 import org.example.localy.dto.mission.MissionDto;
 import org.example.localy.entity.Users;
 import org.example.localy.entity.place.MissionArchive;
+import org.example.localy.repository.UserRepository;
+import org.example.localy.service.mission.ArchiveService;
 import org.example.localy.service.mission.MissionService;
+import org.example.localy.util.JwtUtil;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -24,8 +31,11 @@ import java.util.List;
 public class MissionController {
 
     private final MissionService missionService;
+    private final ArchiveService archiveService;
+    private final JwtUtil jwtUtil;
+    private final UserRepository userRepository;
 
-    @Operation(summary = "미션 홈 조회", description = "포인트 정보와 미션 목록을 조회합니다. 위치 정보를 포함하면 감정 변화에 따라 새로운 미션을 생성합니다.")
+    @Operation(summary = "미션 홈 조회", description = "포인트 정보와 미션 목록 조회 및 미션 생성")
     @GetMapping
     public ResponseEntity<BaseResponse<MissionDto.MissionHomeResponse>> getMissionHome(
             @AuthenticationPrincipal Users user,
@@ -36,7 +46,7 @@ public class MissionController {
         return ResponseEntity.ok(BaseResponse.success("미션 홈 조회 성공", response));
     }
 
-    @Operation(summary = "미션 상세 조회", description = "미션 상세 정보와 장소 정보를 조회합니다.")
+    @Operation(summary = "미션 상세 조회", description = "미션, 장소 상세 정보 조회")
     @GetMapping("/{missionId}")
     public ResponseEntity<BaseResponse<MissionDto.MissionDetailResponse>> getMissionDetail(
             @AuthenticationPrincipal Users user,
@@ -49,7 +59,7 @@ public class MissionController {
         return ResponseEntity.ok(BaseResponse.success("미션 상세 조회 성공", response));
     }
 
-    @Operation(summary = "미션 인증", description = "사용자 위치를 확인하여 미션을 인증하고 포인트를 지급합니다.")
+    @Operation(summary = "미션 인증", description = "사용자 위치로 미션 인증")
     @PostMapping("/{missionId}/verify")
     public ResponseEntity<BaseResponse<MissionDto.VerifyResponse>> verifyMission(
             @AuthenticationPrincipal Users user,
@@ -60,17 +70,7 @@ public class MissionController {
         return ResponseEntity.ok(BaseResponse.success("미션 인증 완료", response));
     }
 
-    @Operation(summary = "프리미엄 구독 구매", description = "포인트를 사용하여 프리미엄 구독권을 구매합니다. (7DAYS: 50P, 30DAYS: 200P)")
-    @PostMapping("/premium/purchase")
-    public ResponseEntity<BaseResponse<Void>> purchasePremium(
-            @AuthenticationPrincipal Users user,
-            @RequestParam String planType) {
-
-        missionService.purchasePremium(user, planType);
-        return ResponseEntity.ok(BaseResponse.success("프리미엄 구독 구매 완료", null));
-    }
-
-    @Operation(summary = "미션 캘린더 아카이빙 저장", description = "수행한 미션의 사진을 아카이빙합니다. 저장된 결과를 반환하므로 스웨거에서 URL 확인이 가능합니다.")
+    @Operation(summary = "미션 캘린더 아카이빙 저장", description = "수행한 미션 사진 아카이빙")
     @PostMapping("/{missionId}/archive")
     public ResponseEntity<BaseResponse<MissionArchive>> archiveMission(
             @AuthenticationPrincipal Users user,
@@ -83,14 +83,57 @@ public class MissionController {
         return ResponseEntity.ok(BaseResponse.success("캘린더 아카이빙 성공", response));
     }
 
-    @Operation(summary = "월별 아카이브 조회", description = "특정 년/월의 아카이빙 목록을 조회하여 캘린더를 채웁니다.")
-    @GetMapping("/archive")
-    public ResponseEntity<BaseResponse<List<MissionArchive>>> getMonthlyArchives(
-            @AuthenticationPrincipal Users user,
-            @RequestParam int year,
-            @RequestParam int month) {
+    @Operation(summary = "미션 캘린더 월별 조회", description = "대표 이미지가 설정된 날짜별 요약 정보 반환")
+    @GetMapping("/archive/monthly")
+    public BaseResponse<MissionArchiveDto.MonthlySummaryResponse> getMonthlyArchive(
+            @RequestHeader("Authorization") String token,
+            @Parameter(description = "연도") @RequestParam(required = false) Integer year,
+            @Parameter(description = "월") @RequestParam(required = false) Integer month) {
 
-        List<MissionArchive> response = missionService.getMonthlyArchives(user, year, month);
-        return ResponseEntity.ok(BaseResponse.success("월별 아카이브 조회 성공", response));
+        Users user = getUserFromToken(token);
+
+        // 값이 없을 경우 현재 시간 기준으로 기본값 설정
+        int targetYear = (year != null) ? year : LocalDate.now().getYear();
+        int targetMonth = (month != null) ? month : LocalDate.now().getMonthValue();
+
+        return BaseResponse.success("월별 조회 성공", missionService.getMonthlySummary(user, targetYear, targetMonth));
+    }
+
+    // 미션 캘린더 상세 조회
+    @Operation(summary = "날짜별 아카이브 상세 조회", description = "특정 날짜의 완료 미션 개수 및 사진 목록 조회")
+    @GetMapping("/archive/detail")
+    public BaseResponse<MissionArchiveDto.DetailResponse> getArchiveDetail(
+            @RequestHeader("Authorization") String token,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        Users user = getUserFromToken(token);
+        return BaseResponse.success("상세 조회 성공", archiveService.getDayDetail(user, date));
+    }
+
+    // 미션 사진 업로드
+    @Operation(summary = "미션 사진 업로드", description = "갤러리 저장 날짜와 선택한 날짜가 일치해야 업로드 가능")
+    @PostMapping("/archive/upload")
+    public BaseResponse<String> uploadArchivePhoto(
+            @RequestHeader("Authorization") String token,
+            @RequestBody MissionArchiveDto.UploadRequest request) {
+        Users user = getUserFromToken(token);
+        archiveService.uploadArchivePhoto(user, request);
+        return BaseResponse.success("사진 업로드 성공", null);
+    }
+
+    // 썸네일 사진 선택
+    @Operation(summary = "썸네일 사진 선택", description = "업로드한 사진 중 먼슬리 페이지에 보일 썸네일 지정")
+    @PatchMapping("/archive/{archiveId}/thumbnail")
+    public BaseResponse<String> updateThumbnail(
+            @RequestHeader("Authorization") String token,
+            @PathVariable Long archiveId) {
+        Users user = getUserFromToken(token);
+        archiveService.setThumbnail(user, archiveId);
+        return BaseResponse.success("썸네일 설정 완료", null);
+    }
+
+    private Users getUserFromToken(String token) {
+        Long userId = jwtUtil.getUserIdFromToken(token.replace("Bearer ", ""));
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new CustomException(AuthErrorCode.USER_NOT_FOUND));
     }
 }
