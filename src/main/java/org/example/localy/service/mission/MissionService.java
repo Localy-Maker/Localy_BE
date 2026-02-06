@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.localy.common.exception.CustomException;
 import org.example.localy.common.exception.errorCode.MissionErrorCode;
+import org.example.localy.dto.mission.MissionArchiveDto;
 import org.example.localy.dto.mission.MissionDto;
 import org.example.localy.dto.place.RecommendDto;
 import org.example.localy.entity.Users;
@@ -203,6 +204,32 @@ public class MissionService {
                         .filter(Mission::getIsCompleted)
                         .map(m -> convertToMissionItem(m, now))
                         .collect(Collectors.toList()))
+                .build();
+    }
+
+    @Transactional(readOnly = true)
+    public MissionArchiveDto.MonthlySummaryResponse getMonthlySummary(Users user, int year, int month) {
+        LocalDate start = LocalDate.of(year, month, 1);
+        LocalDate end = start.withDayOfMonth(start.lengthOfMonth());
+
+        // 해당 월의 모든 아카이브 데이터를 가져옴
+        List<MissionArchive> monthlyArchives = missionArchiveRepository.findByUserAndArchivedDateBetween(user, start, end);
+
+        // 날짜별로 그룹화하여 썸ne일(isThumbnail = true)인 사진만 추출하여 요약 생성
+        List<MissionArchiveDto.ArchiveSummary> summaryList = monthlyArchives.stream()
+                .filter(MissionArchive::getIsThumbnail)
+                .map(a -> MissionArchiveDto.ArchiveSummary.builder()
+                        .date(a.getArchivedDate())
+                        .thumbnailImageUrl(a.getImageUrl())
+                        .hasPhoto(true)
+                        .build())
+                .collect(Collectors.toList());
+
+        return MissionArchiveDto.MonthlySummaryResponse.builder()
+                .userId(user.getId())
+                .year(year)
+                .month(month)
+                .archives(summaryList)
                 .build();
     }
 

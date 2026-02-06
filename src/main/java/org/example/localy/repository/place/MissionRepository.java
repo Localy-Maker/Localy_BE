@@ -41,4 +41,10 @@ public interface MissionRepository extends JpaRepository<Mission, Long> {
 
     @Query("SELECT m.id FROM Mission m WHERE m.expiresAt < :now")
     List<Long> findExpiredMissionIds(@Param("now") LocalDateTime now);
+
+    @Query("SELECT COUNT(m) FROM Mission m WHERE m.user = :user AND m.isCompleted = true " +
+            "AND m.updatedAt >= :startOfDay AND m.updatedAt <= :endOfDay")
+    long countCompletedMissionsByDate(@Param("user") Users user,
+                                      @Param("startOfDay") LocalDateTime start,
+                                      @Param("endOfDay") LocalDateTime end);
 }
