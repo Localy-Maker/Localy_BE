@@ -27,6 +27,7 @@ import org.example.localy.service.place.PlaceRecommendService;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -343,5 +344,50 @@ public class MissionService {
 
     private String generateKakaoMapUrl(Place place) {
         return String.format("https://map.kakao.com/link/map/%s,%s,%s", place.getTitle(), place.getLatitude(), place.getLongitude());
+    }
+
+    @Transactional
+    public void generateMissionAtDetailPage(Users user, Place place, String emotionKeyword) {
+        LocalDateTime now = LocalDateTime.now();
+
+        // 해당 사용자의 현재 활성 미션(24시간 이내) 전체 조회
+        List<Mission> activeMissions = missionRepository.findActiveByUser(user, now);
+
+        // 현재 장소 + 현재 감정에 해당하는 활성 미션이 있는지 확인
+        boolean alreadyHasMission = activeMissions.stream()
+                .anyMatch(m -> m.getPlace().getId().equals(place.getId())
+                        && m.getEmotion().equalsIgnoreCase(emotionKeyword));
+
+        // 동일 감정의 활성 미션이 있다면 기존 미션 유지하고 생성하지 않음
+        if (alreadyHasMission) {
+            log.info("동일 감정의 활성 미션이 존재하여 기존 미션을 유지합니다: emotion={}", emotionKeyword);
+            return;
+        }
+
+        int maxLimit = user.isPremium() ? 3 : 2;
+        int points = user.isPremium() ? 30 : 10;
+
+        log.info("새로운 미션을 {}개 생성합니다. 등급: {}", maxLimit, user.isPremium() ? "PREMIUM" : "BASIC");
+
+        List<Mission> newMissions = new ArrayList<>();
+        for (int i = 0; i < maxLimit; i++) {
+            GPTService.MissionCreationResult missionContent =
+                    gptService.createMissionContent(place.getTitle(), place.getCategory(), emotionKeyword);
+
+            newMissions.add(Mission.builder()
+                    .user(user)
+                    .place(place)
+                    .title(missionContent.getTitle())
+                    .description(missionContent.getDescription())
+                    .emotion(emotionKeyword)
+                    .points(points)
+                    .isCompleted(false)
+                    .createdAt(now)
+                    .expiresAt(now.plusHours(24)) // 24시간 기준
+                    .updatedAt(now)
+                    .build());
+        }
+
+        missionRepository.saveAll(newMissions);
     }
 }
