@@ -170,18 +170,25 @@ public class PlaceService {
     }
 
     // 장소 상세페이지 조회
-    @Transactional(readOnly = true)
+    @Transactional
     public PlaceDto.PlaceDetail getPlaceDetail(Users user, Long placeId) {
         Place place = placeRepository.findById(placeId)
                 .orElseThrow(() -> new CustomException(PlaceErrorCode.PLACE_NOT_FOUND));
 
-        // 이미지 목록 조회
+        if (user != null) {
+            // 사용자의 현재 감정 키워드 가져오기
+            String currentEmotion = emotionDataService.getCurrentEmotion(user).getDominantEmotion();
+
+            // 상세페이지 조회 시점에 미션 생성/누적 로직 실행
+            missionService.generateMissionAtDetailPage(user, place, currentEmotion);
+        }
+
+        // 기존 상세 정보 조회 및 반환 로직
         List<PlaceImage> images = placeImageRepository.findByPlaceOrderByDisplayOrder(place);
         List<String> imageUrls = images.stream()
                 .map(PlaceImage::getImageUrl)
                 .collect(Collectors.toList());
 
-        // 북마크 여부 확인
         boolean isBookmarked = bookmarkRepository.existsByUserAndPlace(user, place);
 
         return PlaceDto.PlaceDetail.builder()
@@ -194,7 +201,7 @@ public class PlaceService {
                 .phoneNumber(place.getPhoneNumber())
                 .openingHours(place.getOpeningHours())
                 .images(imageUrls.isEmpty() ? List.of(place.getThumbnailImage()) : imageUrls)
-                .shortDescription(generateShortDescription(place.getLongDescription()))
+                .shortDescription(place.getShortDescription())
                 .isBookmarked(isBookmarked)
                 .bookmarkCount(place.getBookmarkCount())
                 .build();
