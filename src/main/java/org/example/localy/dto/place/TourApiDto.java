@@ -11,11 +11,7 @@ import java.util.List;
 @AllArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class TourApiDto {
-    // 단일 콘텐츠 조회용
-    private Data data;
-
-    // 목록 조회용 - Swagger 문서와 일치
-    private List<Data> list;  // 실제로는 이게 아니라 아래처럼 와야 함
+    private List<Data> data;
 
     // Paging 정보
     private Paging paging;
