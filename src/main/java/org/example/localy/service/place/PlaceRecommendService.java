@@ -47,18 +47,17 @@ public class PlaceRecommendService {
                     return createDefaultEmotion(user);
                 });
 
-        // 2. 현재 위치 반경(3km) 내 DB 장소 필터링
+        // 2. DB에서 모든 장소 가져오기
         List<Place> allPlaces = placeRepository.findAll();
-        List<Place> nearbyPlaces = allPlaces.stream()
-                .filter(p -> p.getLatitude() != null && p.getLongitude() != null)
-                .filter(p -> DistanceCalculator.calculateDistance(latitude, longitude, p.getLatitude(), p.getLongitude()) <= 3.0)
-                .collect(Collectors.toList());
+
+        // 3. 주변 장소 필터링 (동적 반경)
+        List<Place> nearbyPlaces = findNearbyPlacesWithDynamicRadius(allPlaces, latitude, longitude);
 
         log.info("현재 위치 주변 DB 내 장소 개수: {}", nearbyPlaces.size());
 
-        // 3. 주변 장소 부족 시 API 강제 호출
+        // 4. 주변 장소 부족 시 API 호출하여 추가
         if (nearbyPlaces.size() < 5) {
-            log.info("데이터 부족으로 API를 새로 호출합니다.");
+            log.info("데이터 부족으로 API를 새로 호출합니다. (현재: {}개)", nearbyPlaces.size());
             List<TourApiDto.Data> apiList = tourApiService.getContentsList();
 
             if (apiList != null && !apiList.isEmpty()) {
@@ -67,28 +66,80 @@ public class PlaceRecommendService {
                         .filter(Objects::nonNull)
                         .collect(Collectors.toList());
 
-                nearbyPlaces.addAll(newPlaces.stream()
+                // 새로 저장된 장소들을 거리순으로 정렬하여 추가
+                List<Place> sortedNewPlaces = newPlaces.stream()
                         .filter(p -> p.getLatitude() != null && p.getLongitude() != null)
-                        .filter(p -> DistanceCalculator.calculateDistance(latitude, longitude, p.getLatitude(), p.getLongitude()) <= 3.0)
-                        .collect(Collectors.toList()));
+                        .sorted((p1, p2) -> {
+                            double dist1 = DistanceCalculator.calculateDistance(latitude, longitude, p1.getLatitude(), p1.getLongitude());
+                            double dist2 = DistanceCalculator.calculateDistance(latitude, longitude, p2.getLatitude(), p2.getLongitude());
+                            return Double.compare(dist1, dist2);
+                        })
+                        .collect(Collectors.toList());
+
+                nearbyPlaces.addAll(sortedNewPlaces);
+                log.info("API 호출 후 장소 개수: {}", nearbyPlaces.size());
             }
         }
 
-        // 4. 여전히 장소가 부족하면 빈 응답 반환
+        // 5. 여전히 장소가 부족하면 좌표 없는 장소라도 추가
+        if (nearbyPlaces.size() < 5) {
+            log.warn("좌표 있는 장소가 부족합니다. 좌표 없는 장소도 포함합니다.");
+            List<Place> placesWithoutCoords = allPlaces.stream()
+                    .filter(p -> !nearbyPlaces.contains(p))
+                    .limit(5 - nearbyPlaces.size())
+                    .collect(Collectors.toList());
+
+            nearbyPlaces.addAll(placesWithoutCoords);
+        }
+
+        // 6. 최종적으로도 장소가 없으면 빈 응답
         if (nearbyPlaces.isEmpty()) {
-            log.warn("주변에 추천 가능한 장소가 없습니다.");
+            log.warn("추천 가능한 장소가 전혀 없습니다.");
             return createEmptyRecommendResponse(latestEmotion);
         }
 
-        // 5. GPT 추천 로직 가동
+        // 7. 최소 5개 확보 (부족하면 중복 허용)
+        if (nearbyPlaces.size() < 5) {
+            log.warn("장소가 {}개뿐입니다. 최대한 활용합니다.", nearbyPlaces.size());
+        }
+
+        // 8. GPT 추천 로직 가동
         GPTService.PlaceRecommendationResult aiResult = gptService.getRecommendedPlacesByEmotion(
                 nearbyPlaces,
                 latestEmotion.getEmotion(),
                 user.getInterests()
         );
 
-        // 6. 추천 결과 가공 및 응답
+        // 9. 추천 결과 가공 및 응답
         return convertToRecommendResponse(aiResult, latestEmotion);
+    }
+
+    private List<Place> findNearbyPlacesWithDynamicRadius(List<Place> allPlaces, Double latitude, Double longitude) {
+        double[] radii = {3.0, 5.0, 10.0, 50.0}; // km 단위
+
+        for (double radius : radii) {
+            List<Place> nearbyPlaces = allPlaces.stream()
+                    .filter(p -> p.getLatitude() != null && p.getLongitude() != null)
+                    .filter(p -> DistanceCalculator.calculateDistance(
+                            latitude, longitude, p.getLatitude(), p.getLongitude()) <= radius)
+                    .collect(Collectors.toList());
+
+            if (nearbyPlaces.size() >= 5) {
+                log.info("{}km 반경 내 {}개 장소 발견", radius, nearbyPlaces.size());
+                return nearbyPlaces;
+            }
+        }
+
+        // 50km 내에도 없으면 전체에서 가장 가까운 순으로
+        log.warn("50km 내 장소 부족. 전체에서 가장 가까운 장소 반환");
+        return allPlaces.stream()
+                .filter(p -> p.getLatitude() != null && p.getLongitude() != null)
+                .sorted((p1, p2) -> {
+                    double dist1 = DistanceCalculator.calculateDistance(latitude, longitude, p1.getLatitude(), p1.getLongitude());
+                    double dist2 = DistanceCalculator.calculateDistance(latitude, longitude, p2.getLatitude(), p2.getLongitude());
+                    return Double.compare(dist1, dist2);
+                })
+                .collect(Collectors.toList());
     }
 
     /**
@@ -98,7 +149,7 @@ public class PlaceRecommendService {
         EmotionWindowResult defaultEmotion = new EmotionWindowResult();
         defaultEmotion.setUserId(user.getId());
         defaultEmotion.setEmotion("중립");
-        defaultEmotion.setAvgScore(50.0);
+        defaultEmotion.setAvgScore(50.0); // int -> Double로 수정
         defaultEmotion.setWindow("default");
         defaultEmotion.setSection(3); // 중립 구간
         defaultEmotion.setCreatedAt(java.time.LocalDateTime.now());
@@ -137,20 +188,19 @@ public class PlaceRecommendService {
 
         // RecommendDto.RecommendResponse 빌더 구조에 맞춰 생성
         return RecommendDto.RecommendResponse.builder()
-                .emotion(latestEmotion.getEmotion()) // emotionKeyword -> emotion
-                .score(latestEmotion.getAvgScore()) // score 필드 추가
-                .recommendations(recommendations) // recommendedPlaces -> recommendations
-                .missions(new ArrayList<>()) // missions 필드 초기화
+                .emotion(latestEmotion.getEmotion())
+                .score(latestEmotion.getAvgScore())
+                .recommendations(recommendations)
+                .missions(new ArrayList<>())
                 .build();
     }
 
     private Place saveNewPlaceFromApi(TourApiDto.Data data) {
-        // TourApiDto.Data -> Place 수동 매핑 (toEntity 메서드 대체)
         return placeRepository.findByContentId(data.getCid())
                 .orElseGet(() -> {
                     try {
                         return placeRepository.save(Place.builder()
-                                .contentId(data.getCid())
+                                .contentId(data.getCid()) // contentid -> cid
                                 .title(data.getPost_sj())
                                 .category(data.getCate_depth())
                                 .thumbnailImage(data.getMain_img())
