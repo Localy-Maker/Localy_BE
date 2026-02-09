@@ -94,49 +94,72 @@ public class PlaceService {
                     .build();
         }
 
-        // EmotionDataService가 Score를 반환한다고 가정
-        RecommendDto.EmotionData emotionData = emotionDataService.getCurrentEmotion(user);
+        try {
+            // EmotionDataService가 Score를 반환한다고 가정
+            RecommendDto.EmotionData emotionData = emotionDataService.getCurrentEmotion(user);
 
-        int currentEmotionScore = emotionData.getEmotionScore();
+            int currentEmotionScore = emotionData != null ? emotionData.getEmotionScore() : 50;
 
-        LocalDateTime now = LocalDateTime.now();
-        long totalMissions = missionRepository.countActiveByUser(user, now);
-        long completedMissions = missionRepository.countCompletedByUser(user, now);
+            LocalDateTime now = LocalDateTime.now();
+            long totalMissions = missionRepository.countActiveByUser(user, now);
+            long completedMissions = missionRepository.countCompletedByUser(user, now);
 
-        int progressPercent = totalMissions > 0
-                ? (int) ((completedMissions * 100) / totalMissions)
-                : 0;
+            int progressPercent = totalMissions > 0
+                    ? (int) ((completedMissions * 100) / totalMissions)
+                    : 0;
 
-        return PlaceDto.MissionBanner.builder()
-                .emotionKeyword(getEmotionKeyword(currentEmotionScore)) // 수치 기반 키워드 사용
-                .totalMissions((int) totalMissions)
-                .completedMissions((int) completedMissions)
-                .progressPercent(progressPercent)
-                .build();
+            return PlaceDto.MissionBanner.builder()
+                    .emotionKeyword(getEmotionKeyword(currentEmotionScore)) // 수치 기반 키워드 사용
+                    .totalMissions((int) totalMissions)
+                    .completedMissions((int) completedMissions)
+                    .progressPercent(progressPercent)
+                    .build();
+        } catch (Exception e) {
+            log.error("미션 배너 데이터 조회 실패, 기본값 반환", e);
+            return PlaceDto.MissionBanner.builder()
+                    .emotionKeyword(getEmotionKeyword(50))
+                    .totalMissions(0)
+                    .completedMissions(0)
+                    .progressPercent(0)
+                    .build();
+        }
     }
 
     // 미션 장소 목록
     private List<PlaceDto.PlaceSimple> getMissionPlaces(Users user, Double latitude, Double longitude) {
         if (user == null) return List.of();
-        List<Mission> activeMissions = missionRepository.findActiveByUser(user, LocalDateTime.now()).stream()
-                .filter(m -> !m.getIsCompleted())
-                .collect(Collectors.toList());
 
-        return activeMissions.stream()
-                .map(Mission::getPlace)
-                .map(place -> convertToPlaceSimple(place, latitude, longitude))
-                .collect(Collectors.toList());
+        try {
+            List<Mission> activeMissions = missionRepository.findActiveByUser(user, LocalDateTime.now()).stream()
+                    .filter(m -> !m.getIsCompleted())
+                    .collect(Collectors.toList());
+
+            return activeMissions.stream()
+                    .map(Mission::getPlace)
+                    .filter(Objects::nonNull)
+                    .map(place -> convertToPlaceSimple(place, latitude, longitude))
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("미션 장소 조회 실패", e);
+            return List.of();
+        }
     }
 
     // 추천 장소 (미션 포함)
     private List<PlaceDto.PlaceSimple> getRecommendedPlaces(Users user, Double latitude, Double longitude) {
         if (user == null) return List.of();
+
         try {
             RecommendDto.RecommendResponse recommendation =
                     recommendService.recommendPlaces(user, latitude, longitude);
 
+            if (recommendation == null || recommendation.getRecommendedPlaces() == null) {
+                log.warn("추천 결과가 null입니다.");
+                return List.of();
+            }
+
             return recommendation.getRecommendedPlaces().stream()
-                    // .filter(rec -> !missionPlaceIds.contains(rec.getPlaceId()))
                     .limit(5)
                     .map(rec -> {
                         Place place = placeRepository.findById(rec.getPlaceId())
@@ -149,7 +172,7 @@ public class PlaceService {
 
                         return convertToPlaceSimple(place, latitude, longitude);
                     })
-                    .filter(place -> place != null)
+                    .filter(Objects::nonNull)
                     .collect(Collectors.toList());
         } catch (Exception e) {
             log.error("추천 장소 조회 실패", e);
@@ -160,13 +183,19 @@ public class PlaceService {
     // 최근 북마크 생성 (최대 5개)
     private List<PlaceDto.BookmarkItem> getRecentBookmarks(Users user) {
         if (user == null) return List.of();
-        List<Bookmark> bookmarks = bookmarkRepository.findTop5ByUserOrderByCreatedAtDesc(
-                user, PageRequest.of(0, 5));
 
-        return bookmarks.stream()
-                .map(this::convertToBookmarkItem)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toList());
+        try {
+            List<Bookmark> bookmarks = bookmarkRepository.findTop5ByUserOrderByCreatedAtDesc(
+                    user, PageRequest.of(0, 5));
+
+            return bookmarks.stream()
+                    .map(this::convertToBookmarkItem)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("북마크 조회 실패", e);
+            return List.of();
+        }
     }
 
     // 장소 상세페이지 조회
@@ -176,11 +205,17 @@ public class PlaceService {
                 .orElseThrow(() -> new CustomException(PlaceErrorCode.PLACE_NOT_FOUND));
 
         if (user != null) {
-            // 사용자의 현재 감정 키워드 가져오기
-            String currentEmotion = emotionDataService.getCurrentEmotion(user).getDominantEmotion();
+            try {
+                // 사용자의 현재 감정 키워드 가져오기
+                RecommendDto.EmotionData emotionData = emotionDataService.getCurrentEmotion(user);
+                String currentEmotion = emotionData != null ? emotionData.getDominantEmotion() : "중립";
 
-            // 상세페이지 조회 시점에 미션 생성/누적 로직 실행
-            missionService.generateMissionAtDetailPage(user, place, currentEmotion);
+                // 상세페이지 조회 시점에 미션 생성/누적 로직 실행
+                missionService.generateMissionAtDetailPage(user, place, currentEmotion);
+            } catch (Exception e) {
+                log.error("미션 생성 실패 (상세페이지)", e);
+                // 미션 생성 실패해도 상세페이지는 정상 반환
+            }
         }
 
         // 기존 상세 정보 조회 및 반환 로직
@@ -301,6 +336,11 @@ public class PlaceService {
 
     // Place를 PlaceSimple로 변환
     private PlaceDto.PlaceSimple convertToPlaceSimple(Place place, Double latitude, Double longitude) {
+        if (place == null || place.getLatitude() == null || place.getLongitude() == null) {
+            log.warn("장소 정보가 불완전합니다. place={}", place);
+            return null;
+        }
+
         double distance = DistanceCalculator.calculateDistance(
                 latitude, longitude, place.getLatitude(), place.getLongitude());
 

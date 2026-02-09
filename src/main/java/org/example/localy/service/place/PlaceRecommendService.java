@@ -36,17 +36,21 @@ public class PlaceRecommendService {
 
     @Transactional
     public RecommendDto.RecommendResponse recommendPlaces(Users user, Double latitude, Double longitude) {
-        // 1. 오늘 기준 최신 감정 분석 결과 가져오기
+        // 1. 오늘 기준 최신 감정 분석 결과 가져오기 (없으면 기본값 사용)
         EmotionWindowResult latestEmotion = emotionWindowResultRepository
                 .findFirstByUserIdAndCreatedAtBetweenOrderByCreatedAtDesc(
                         user.getId(),
                         java.time.LocalDate.now().atStartOfDay(),
                         java.time.LocalDateTime.now()
-                ).orElseThrow(() -> new CustomException(PlaceErrorCode.EMOTION_DATA_NOT_FOUND));
+                ).orElseGet(() -> {
+                    log.warn("사용자 {}의 감정 데이터가 없습니다. 기본 감정 데이터를 사용합니다.", user.getId());
+                    return createDefaultEmotion(user);
+                });
 
         // 2. 현재 위치 반경(3km) 내 DB 장소 필터링
         List<Place> allPlaces = placeRepository.findAll();
         List<Place> nearbyPlaces = allPlaces.stream()
+                .filter(p -> p.getLatitude() != null && p.getLongitude() != null)
                 .filter(p -> DistanceCalculator.calculateDistance(latitude, longitude, p.getLatitude(), p.getLongitude()) <= 3.0)
                 .collect(Collectors.toList());
 
@@ -64,20 +68,53 @@ public class PlaceRecommendService {
                         .collect(Collectors.toList());
 
                 nearbyPlaces.addAll(newPlaces.stream()
+                        .filter(p -> p.getLatitude() != null && p.getLongitude() != null)
                         .filter(p -> DistanceCalculator.calculateDistance(latitude, longitude, p.getLatitude(), p.getLongitude()) <= 3.0)
                         .collect(Collectors.toList()));
             }
         }
 
-        // 4. GPT 추천 로직 가동
+        // 4. 여전히 장소가 부족하면 빈 응답 반환
+        if (nearbyPlaces.isEmpty()) {
+            log.warn("주변에 추천 가능한 장소가 없습니다.");
+            return createEmptyRecommendResponse(latestEmotion);
+        }
+
+        // 5. GPT 추천 로직 가동
         GPTService.PlaceRecommendationResult aiResult = gptService.getRecommendedPlacesByEmotion(
                 nearbyPlaces,
                 latestEmotion.getEmotion(),
                 user.getInterests()
         );
 
-        // 5. 추천 결과 가공 및 응답 (기존 DTO 구조에 완벽히 맞춤)
+        // 6. 추천 결과 가공 및 응답
         return convertToRecommendResponse(aiResult, latestEmotion);
+    }
+
+    /**
+     * 기본 감정 데이터 생성 (감정 데이터가 없을 때 사용)
+     */
+    private EmotionWindowResult createDefaultEmotion(Users user) {
+        EmotionWindowResult defaultEmotion = new EmotionWindowResult();
+        defaultEmotion.setUserId(user.getId());
+        defaultEmotion.setEmotion("중립");
+        defaultEmotion.setAvgScore(50.0);
+        defaultEmotion.setWindow("default");
+        defaultEmotion.setSection(3);
+        defaultEmotion.setCreatedAt(java.time.LocalDateTime.now());
+        return defaultEmotion;
+    }
+
+    /**
+     * 빈 추천 응답 생성 (추천 장소가 없을 때)
+     */
+    private RecommendDto.RecommendResponse createEmptyRecommendResponse(EmotionWindowResult emotion) {
+        return RecommendDto.RecommendResponse.builder()
+                .emotion(emotion.getEmotion())
+                .score(emotion.getAvgScore())
+                .recommendations(new ArrayList<>())
+                .missions(new ArrayList<>())
+                .build();
     }
 
     private RecommendDto.RecommendResponse convertToRecommendResponse(GPTService.PlaceRecommendationResult aiResult, EmotionWindowResult latestEmotion) {
@@ -110,18 +147,25 @@ public class PlaceRecommendService {
     private Place saveNewPlaceFromApi(TourApiDto.Data data) {
         // TourApiDto.Data -> Place 수동 매핑 (toEntity 메서드 대체)
         return placeRepository.findByContentId(data.getCid())
-                .orElseGet(() -> placeRepository.save(Place.builder()
-                        .contentId(data.getCid()) // contentid -> cid
-                        .title(data.getPost_sj())
-                        .category(data.getCate_depth())
-                        .thumbnailImage(data.getMain_img())
-                        .shortDescription(data.getSumry())
-                        .overview(data.getPost_desc())
-                        .latitude(data.getTraffic() != null && data.getTraffic().getMap_position_y() != null ?
-                                Double.parseDouble(data.getTraffic().getMap_position_y()) : null)
-                        .longitude(data.getTraffic() != null && data.getTraffic().getMap_position_x() != null ?
-                                Double.parseDouble(data.getTraffic().getMap_position_x()) : null)
-                        .build()));
+                .orElseGet(() -> {
+                    try {
+                        return placeRepository.save(Place.builder()
+                                .contentId(data.getCid()) // contentid -> cid
+                                .title(data.getPost_sj())
+                                .category(data.getCate_depth())
+                                .thumbnailImage(data.getMain_img())
+                                .shortDescription(data.getSumry())
+                                .overview(data.getPost_desc())
+                                .latitude(data.getTraffic() != null && data.getTraffic().getMap_position_y() != null ?
+                                        Double.parseDouble(data.getTraffic().getMap_position_y()) : null)
+                                .longitude(data.getTraffic() != null && data.getTraffic().getMap_position_x() != null ?
+                                        Double.parseDouble(data.getTraffic().getMap_position_x()) : null)
+                                .build());
+                    } catch (Exception e) {
+                        log.error("장소 저장 실패: cid={}", data.getCid(), e);
+                        return null;
+                    }
+                });
     }
 
     public Place saveOrUpdatePlace(String cid) {
