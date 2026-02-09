@@ -61,13 +61,20 @@ public class PlaceRecommendService {
             List<TourApiDto.Data> apiList = tourApiService.getContentsList();
 
             if (apiList != null && !apiList.isEmpty()) {
-                List<Place> newPlaces = apiList.stream()
-                        .map(this::saveNewPlaceFromApi)
-                        .filter(Objects::nonNull)
-                        .collect(Collectors.toList());
+                log.info("API에서 {}개의 데이터를 받았습니다.", apiList.size());
 
-                // 새로 저장된 장소들을 거리순으로 정렬하여 추가
-                List<Place> sortedNewPlaces = newPlaces.stream()
+                List<Place> newPlaces = new ArrayList<>();
+                for (TourApiDto.Data data : apiList) {
+                    Place saved = saveNewPlaceFromApi(data);
+                    if (saved != null) {
+                        newPlaces.add(saved);
+                    }
+                }
+
+                log.info("{}개의 새 장소를 저장했습니다.", newPlaces.size());
+
+                // 좌표 있는 장소만 거리순 정렬
+                List<Place> placesWithCoords = newPlaces.stream()
                         .filter(p -> p.getLatitude() != null && p.getLongitude() != null)
                         .sorted((p1, p2) -> {
                             double dist1 = DistanceCalculator.calculateDistance(latitude, longitude, p1.getLatitude(), p1.getLongitude());
@@ -76,8 +83,19 @@ public class PlaceRecommendService {
                         })
                         .collect(Collectors.toList());
 
-                nearbyPlaces.addAll(sortedNewPlaces);
-                log.info("API 호출 후 장소 개수: {}", nearbyPlaces.size());
+                nearbyPlaces.addAll(placesWithCoords);
+                log.info("좌표 있는 장소 {}개 추가. API 호출 후 총 장소 개수: {}", placesWithCoords.size(), nearbyPlaces.size());
+
+                // 여전히 부족하면 좌표 없는 장소도 추가
+                if (nearbyPlaces.size() < 5) {
+                    List<Place> placesWithoutCoords = newPlaces.stream()
+                            .filter(p -> p.getLatitude() == null || p.getLongitude() == null)
+                            .limit(5 - nearbyPlaces.size())
+                            .collect(Collectors.toList());
+
+                    nearbyPlaces.addAll(placesWithoutCoords);
+                    log.warn("좌표 없는 장소 {}개를 추가했습니다. 총 장소 개수: {}", placesWithoutCoords.size(), nearbyPlaces.size());
+                }
             }
         }
 
@@ -114,6 +132,9 @@ public class PlaceRecommendService {
         return convertToRecommendResponse(aiResult, latestEmotion);
     }
 
+    /**
+     * 동적 반경으로 주변 장소 찾기 (3km → 5km → 10km → 50km 순으로 확장)
+     */
     private List<Place> findNearbyPlacesWithDynamicRadius(List<Place> allPlaces, Double latitude, Double longitude) {
         double[] radii = {3.0, 5.0, 10.0, 50.0}; // km 단위
 
@@ -196,26 +217,64 @@ public class PlaceRecommendService {
     }
 
     private Place saveNewPlaceFromApi(TourApiDto.Data data) {
-        return placeRepository.findByContentId(data.getCid())
-                .orElseGet(() -> {
+        try {
+            if (data == null || data.getCid() == null) {
+                log.warn("API 데이터가 null이거나 cid가 없습니다.");
+                return null;
+            }
+
+            // 이미 존재하는 장소면 반환
+            Optional<Place> existing = placeRepository.findByContentId(data.getCid());
+            if (existing.isPresent()) {
+                log.debug("이미 존재하는 장소입니다. cid: {}", data.getCid());
+                return existing.get();
+            }
+
+            // 좌표 파싱 시도
+            Double latitude = null;
+            Double longitude = null;
+
+            if (data.getTraffic() != null) {
+                String mapY = data.getTraffic().getMap_position_y();
+                String mapX = data.getTraffic().getMap_position_x();
+
+                log.debug("장소 좌표 정보 - cid: {}, Y: {}, X: {}", data.getCid(), mapY, mapX);
+
+                if (mapY != null && mapX != null && !mapY.isEmpty() && !mapX.isEmpty()) {
                     try {
-                        return placeRepository.save(Place.builder()
-                                .contentId(data.getCid()) // contentid -> cid
-                                .title(data.getPost_sj())
-                                .category(data.getCate_depth())
-                                .thumbnailImage(data.getMain_img())
-                                .shortDescription(data.getSumry())
-                                .overview(data.getPost_desc())
-                                .latitude(data.getTraffic() != null && data.getTraffic().getMap_position_y() != null ?
-                                        Double.parseDouble(data.getTraffic().getMap_position_y()) : null)
-                                .longitude(data.getTraffic() != null && data.getTraffic().getMap_position_x() != null ?
-                                        Double.parseDouble(data.getTraffic().getMap_position_x()) : null)
-                                .build());
-                    } catch (Exception e) {
-                        log.error("장소 저장 실패: cid={}", data.getCid(), e);
-                        return null;
+                        latitude = Double.parseDouble(mapY);
+                        longitude = Double.parseDouble(mapX);
+                        log.debug("좌표 파싱 성공 - cid: {}, lat: {}, lng: {}", data.getCid(), latitude, longitude);
+                    } catch (NumberFormatException e) {
+                        log.warn("좌표 파싱 실패 - cid: {}, Y: {}, X: {}", data.getCid(), mapY, mapX);
                     }
-                });
+                }
+            } else {
+                log.warn("Traffic 정보가 없습니다. cid: {}", data.getCid());
+            }
+
+            // 좌표가 없어도 일단 저장 (나중에 상세 정보 API로 보완 가능)
+            Place place = Place.builder()
+                    .contentId(data.getCid())
+                    .title(data.getPost_sj() != null ? data.getPost_sj() : "제목 없음")
+                    .category(data.getCate_depth() != null ? data.getCate_depth() : "기타")
+                    .thumbnailImage(data.getMain_img())
+                    .shortDescription(data.getSumry())
+                    .overview(data.getPost_desc())
+                    .latitude(latitude)
+                    .longitude(longitude)
+                    .build();
+
+            Place saved = placeRepository.save(place);
+            log.info("새 장소 저장 완료 - cid: {}, 제목: {}, 좌표: ({}, {})",
+                    saved.getContentId(), saved.getTitle(), saved.getLatitude(), saved.getLongitude());
+
+            return saved;
+
+        } catch (Exception e) {
+            log.error("장소 저장 실패 - cid: {}, error: {}", data.getCid(), e.getMessage(), e);
+            return null;
+        }
     }
 
     public Place saveOrUpdatePlace(String cid) {
@@ -238,7 +297,7 @@ public class PlaceRecommendService {
             return existingPlace.orElse(null);
         }
 
-        // data가 List이므로 첫 번째 항목 가져오기
+        // ⭐ data가 List이므로 첫 번째 항목 가져오기
         TourApiDto.Data d = response.getData().get(0);
         String cleanDesc = d.getPost_desc() != null ? d.getPost_desc().replaceAll("<[^>]*>", " ").trim() : "";
 
