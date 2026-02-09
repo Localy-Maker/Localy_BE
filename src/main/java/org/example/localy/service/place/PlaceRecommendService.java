@@ -100,7 +100,7 @@ public class PlaceRecommendService {
         defaultEmotion.setEmotion("중립");
         defaultEmotion.setAvgScore(50.0);
         defaultEmotion.setWindow("default");
-        defaultEmotion.setSection(3);
+        defaultEmotion.setSection(3); // 중립 구간
         defaultEmotion.setCreatedAt(java.time.LocalDateTime.now());
         return defaultEmotion;
     }
@@ -150,7 +150,7 @@ public class PlaceRecommendService {
                 .orElseGet(() -> {
                     try {
                         return placeRepository.save(Place.builder()
-                                .contentId(data.getCid()) // contentid -> cid
+                                .contentId(data.getCid())
                                 .title(data.getPost_sj())
                                 .category(data.getCate_depth())
                                 .thumbnailImage(data.getMain_img())
@@ -183,12 +183,13 @@ public class PlaceRecommendService {
 
         // 상세정보 없을 때만 VisitSeoul API 호출
         TourApiDto response = tourApiService.getPlaceDetailByCid(cid);
-        if (response == null || response.getData() == null) {
+        if (response == null || response.getData() == null || response.getData().isEmpty()) {
             log.warn("장소 상세 정보를 가져올 수 없습니다. cid: {}", cid);
             return existingPlace.orElse(null);
         }
 
-        TourApiDto.Data d = response.getData();
+        // data가 List이므로 첫 번째 항목 가져오기
+        TourApiDto.Data d = response.getData().get(0);
         String cleanDesc = d.getPost_desc() != null ? d.getPost_desc().replaceAll("<[^>]*>", " ").trim() : "";
 
         Place place = existingPlace.orElseGet(() -> Place.builder().build());
