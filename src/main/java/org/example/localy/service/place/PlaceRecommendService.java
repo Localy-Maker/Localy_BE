@@ -218,57 +218,42 @@ public class PlaceRecommendService {
 
     private Place saveNewPlaceFromApi(TourApiDto.Data data) {
         try {
-            if (data == null || data.getCid() == null) {
-                log.warn("API 데이터가 null이거나 cid가 없습니다.");
-                return null;
-            }
+            if (data == null || data.getCid() == null) return null;
 
-            // 이미 존재하는 장소면 반환
             Optional<Place> existing = placeRepository.findByContentId(data.getCid());
-            if (existing.isPresent()) {
-                log.debug("이미 존재하는 장소입니다. cid: {}", data.getCid());
-                return existing.get();
-            }
+            if (existing.isPresent()) return existing.get();
 
-            // 좌표 파싱 시도
-            Double latitude = null;
-            Double longitude = null;
+            Double lat = null, lon = null;
+            String address = null;
 
             if (data.getTraffic() != null) {
-                String mapY = data.getTraffic().getMap_position_y();
-                String mapX = data.getTraffic().getMap_position_x();
-
-                log.debug("장소 좌표 정보 - cid: {}, Y: {}, X: {}", data.getCid(), mapY, mapX);
-
-                if (mapY != null && mapX != null && !mapY.isEmpty() && !mapX.isEmpty()) {
-                    try {
-                        latitude = Double.parseDouble(mapY);
-                        longitude = Double.parseDouble(mapX);
-                        log.debug("좌표 파싱 성공 - cid: {}, lat: {}, lng: {}", data.getCid(), latitude, longitude);
-                    } catch (NumberFormatException e) {
-                        log.warn("좌표 파싱 실패 - cid: {}, Y: {}, X: {}", data.getCid(), mapY, mapX);
+                address = data.getTraffic().getAdres();
+                try {
+                    if (org.springframework.util.StringUtils.hasText(data.getTraffic().getMap_position_y())) {
+                        lat = Double.parseDouble(data.getTraffic().getMap_position_y());
                     }
+                    if (org.springframework.util.StringUtils.hasText(data.getTraffic().getMap_position_x())) {
+                        lon = Double.parseDouble(data.getTraffic().getMap_position_x());
+                    }
+                } catch (NumberFormatException e) {
+                    log.warn("좌표 형식 오류: cid={}", data.getCid());
                 }
-            } else {
-                log.warn("Traffic 정보가 없습니다. cid: {}", data.getCid());
             }
 
             Place place = Place.builder()
                     .contentId(data.getCid())
                     .title(data.getPost_sj())
-                    .longitude(Double.parseDouble(data.getTraffic().getMap_position_x())) // 경도
-                    .latitude(Double.parseDouble(data.getTraffic().getMap_position_y()))  // 위도
-                    .address(data.getTraffic().getAdres())
+                    .latitude(lat)
+                    .longitude(lon)
+                    .address(address)
+                    .category(data.getCate_depth())
+                    .shortDescription(data.getSumry())
+                    .thumbnailImage(data.getMain_img())
                     .build();
 
-            Place saved = placeRepository.save(place);
-            log.info("새 장소 저장 완료 - cid: {}, 제목: {}, 좌표: ({}, {})",
-                    saved.getContentId(), saved.getTitle(), saved.getLatitude(), saved.getLongitude());
-
-            return saved;
-
+            return placeRepository.save(place);
         } catch (Exception e) {
-            log.error("장소 저장 실패 - cid: {}, error: {}", data.getCid(), e.getMessage(), e);
+            log.error("저장 실패: cid={}, error={}", data.getCid(), e.getMessage());
             return null;
         }
     }
