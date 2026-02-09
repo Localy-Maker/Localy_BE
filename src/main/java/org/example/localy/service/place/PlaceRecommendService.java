@@ -253,16 +253,12 @@ public class PlaceRecommendService {
                 log.warn("Traffic 정보가 없습니다. cid: {}", data.getCid());
             }
 
-            // 좌표가 없어도 일단 저장 (나중에 상세 정보 API로 보완 가능)
             Place place = Place.builder()
                     .contentId(data.getCid())
-                    .title(data.getPost_sj() != null ? data.getPost_sj() : "제목 없음")
-                    .category(data.getCate_depth() != null ? data.getCate_depth() : "기타")
-                    .thumbnailImage(data.getMain_img())
-                    .shortDescription(data.getSumry())
-                    .overview(data.getPost_desc())
-                    .latitude(latitude)
-                    .longitude(longitude)
+                    .title(data.getPost_sj())
+                    .longitude(Double.parseDouble(data.getTraffic().getMap_position_x())) // 경도
+                    .latitude(Double.parseDouble(data.getTraffic().getMap_position_y()))  // 위도
+                    .address(data.getTraffic().getAdres())
                     .build();
 
             Place saved = placeRepository.save(place);

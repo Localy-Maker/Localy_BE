@@ -9,6 +9,7 @@ import java.util.List;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class TourApiDto {
     private List<Data> data;
@@ -78,6 +79,9 @@ public class TourApiDto {
         @JsonProperty("cmmn_telno")
         private String cmmn_telno;
 
+        @JsonProperty("cmmn_hmpg_url")
+        private String cmmn_hmpg_url;
+
         @JsonProperty("cmmn_use_time")
         private String cmmn_use_time;
 
@@ -86,6 +90,9 @@ public class TourApiDto {
 
         @JsonProperty("disabled_facility")
         private List<String> disabledFacility;
+
+        @JsonProperty("closed_days")
+        private String closedDays;
     }
 
     @Getter
@@ -100,13 +107,17 @@ public class TourApiDto {
         private String newZipCode;
 
         @JsonProperty("new_adres")
-        private String new_adres;
+        private String new_adres; // 도로명 주소
 
+        // VisitSeoul API: x는 경도(Longitude), y는 위도(Latitude)
         @JsonProperty("map_position_x")
         private String map_position_x;
 
         @JsonProperty("map_position_y")
         private String map_position_y;
+
+        @JsonProperty("subway_info")
+        private String subwayInfo;
     }
 
     @Getter
