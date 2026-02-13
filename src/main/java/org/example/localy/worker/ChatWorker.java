@@ -248,10 +248,10 @@ public class ChatWorker {
         return switch (label) {
             case 1 -> -15; // 매우 부정
             case 2 -> -10;
-            case 3 -> -7;
-            case 4 -> -4;
-            case 5 -> 5;   // 중립
-            case 6 -> 10;  // 매우 긍정
+            case 3 -> -5;
+            case 4 -> 0;
+            case 5 -> 7;   // 중립
+            case 6 -> 15;  // 매우 긍정
             default -> 0;
         };
     }
