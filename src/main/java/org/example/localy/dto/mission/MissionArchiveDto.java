@@ -48,7 +48,6 @@ public class MissionArchiveDto {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class UploadRequest {
-        private String imageUrl;
         private LocalDate targetDate;
         private LocalDate photoStoredDate;
     }

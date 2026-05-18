@@ -9,8 +9,10 @@ import org.example.localy.entity.Users;
 import org.example.localy.entity.place.MissionArchive;
 import org.example.localy.repository.place.MissionArchiveRepository;
 import org.example.localy.repository.place.MissionRepository;
+import org.example.localy.service.S3UploadService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -24,6 +26,7 @@ public class ArchiveService {
 
     private final MissionArchiveRepository missionArchiveRepository;
     private final MissionRepository missionRepository;
+    private final S3UploadService s3UploadService;
 
     @Transactional(readOnly = true)
     public MissionArchiveDto.DetailResponse getDayDetail(Users user, LocalDate date) {
@@ -50,16 +53,17 @@ public class ArchiveService {
     }
 
     @Transactional
-    public void uploadArchivePhoto(Users user, MissionArchiveDto.UploadRequest request) {
-        // 갤러리 저장 날짜와 달력 선택 날짜 일치 확인
-        if (!request.getTargetDate().equals(request.getPhotoStoredDate())) {
+    public void uploadArchivePhoto(Users user, MultipartFile file, LocalDate targetDate, LocalDate photoStoredDate) {
+        if (!targetDate.equals(photoStoredDate)) {
             throw new CustomException(MissionErrorCode.DATE_MISMATCH);
         }
 
+        String imageUrl = s3UploadService.upload(file);
+
         MissionArchive archive = MissionArchive.builder()
                 .user(user)
-                .imageUrl(request.getImageUrl())
-                .archivedDate(request.getTargetDate())
+                .imageUrl(imageUrl)
+                .archivedDate(targetDate)
                 .build();
 
         missionArchiveRepository.save(archive);

@@ -17,9 +17,11 @@ import org.example.localy.service.mission.ArchiveService;
 import org.example.localy.service.mission.MissionService;
 import org.example.localy.util.JwtUtil;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -111,12 +113,14 @@ public class MissionController {
 
     // 미션 사진 업로드
     @Operation(summary = "미션 사진 업로드", description = "갤러리 저장 날짜와 선택한 날짜가 일치해야 업로드 가능")
-    @PostMapping("/archive/upload")
+    @PostMapping(value = "/archive/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public BaseResponse<String> uploadArchivePhoto(
             @RequestHeader("Authorization") String token,
-            @RequestBody MissionArchiveDto.UploadRequest request) {
+            @RequestPart("file") MultipartFile file,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate targetDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate photoStoredDate) {
         Users user = getUserFromToken(token);
-        archiveService.uploadArchivePhoto(user, request);
+        archiveService.uploadArchivePhoto(user, file, targetDate, photoStoredDate);
         return BaseResponse.success("사진 업로드 성공", null);
     }
 
