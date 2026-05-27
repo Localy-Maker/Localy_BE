@@ -1,7 +1,9 @@
 package org.example.localy.repository;
 
+import jakarta.persistence.LockModeType;
 import org.example.localy.entity.Users;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
@@ -23,4 +25,8 @@ public interface UserRepository extends JpaRepository<Users, Long> {
 
     @Query("SELECT u.id FROM Users u")
     List<Long> findAllUserIds();
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT u FROM Users u WHERE u.id = :id")
+    Optional<Users> findByIdWithLock(Long id);
 }

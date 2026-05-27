@@ -65,6 +65,10 @@ public class Users {
     @Column(name = "onboarding_completed")
     private Boolean onboardingCompleted = false; // 온보딩 완료 여부
 
+    @Column(name = "current_character_code", columnDefinition = "VARCHAR(20) NOT NULL DEFAULT 'happy'")
+    @Builder.Default
+    private String currentCharacterCode = "happy";
+
     public enum AuthProvider {
         LOCAL, GOOGLE
     }
