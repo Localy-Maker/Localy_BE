@@ -69,6 +69,9 @@ public class Users {
     @Builder.Default
     private String currentCharacterCode = "happy";
 
+    @Column(name = "premium_expires_at")
+    private LocalDateTime premiumExpiresAt;
+
     public enum AuthProvider {
         LOCAL, GOOGLE
     }
@@ -93,5 +96,14 @@ public class Users {
         if (this.points >= amount) {
             this.points -= amount;
         }
+    }
+
+    public boolean isPremium() {
+        return premiumExpiresAt != null && premiumExpiresAt.isAfter(LocalDateTime.now());
+    }
+
+    public void extendPremium(int days) {
+        LocalDateTime base = isPremium() ? premiumExpiresAt : LocalDateTime.now();
+        this.premiumExpiresAt = base.plusDays(days);
     }
 }

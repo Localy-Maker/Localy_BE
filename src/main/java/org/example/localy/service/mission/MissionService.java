@@ -45,6 +45,8 @@ public class MissionService {
     private static final long NEW_TAG_HOURS = 48; // 48시간 이내 생성된 미션
     private static final int DEFAULT_MISSION_POINTS = 10;
     private static final int MAX_MISSIONS_PER_REQUEST = 2;
+    private static final int PREMIUM_MISSION_POINTS = 30;
+    private static final int PREMIUM_MAX_MISSIONS = 3;
     private static final long ACTIVE_MISSION_HOURS = 24; // 활성 미션 기준: 24시간
 
     @Transactional
@@ -57,10 +59,13 @@ public class MissionService {
         LocalDateTime now = LocalDateTime.now();
         List<Mission> activeMissions = missionRepository.findActiveByUser(user, now);
 
+        int maxMissions = user.isPremium() ? PREMIUM_MAX_MISSIONS : MAX_MISSIONS_PER_REQUEST;
+        int missionPoints = user.isPremium() ? PREMIUM_MISSION_POINTS : DEFAULT_MISSION_POINTS;
+
         List<Mission> newMissions = new java.util.ArrayList<>();
 
         for (Place place : recommendedPlaces) {
-            if (newMissions.size() >= MAX_MISSIONS_PER_REQUEST) {
+            if (newMissions.size() >= maxMissions) {
                 break;
             }
 
@@ -85,7 +90,7 @@ public class MissionService {
                     .place(place)
                     .title(missionContent.getTitle())
                     .description(missionContent.getDescription())
-                    .points(DEFAULT_MISSION_POINTS)
+                    .points(missionPoints)
                     .emotion(emotionKeyword)
                     .isCompleted(false)
                     .createdAt(now)
