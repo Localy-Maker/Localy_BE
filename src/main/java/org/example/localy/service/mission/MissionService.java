@@ -46,13 +46,13 @@ public class MissionService {
     private final PlaceRepository placeRepository;
     private final MissionArchiveRepository missionArchiveRepository; // 신규 추가
 
-    private static final double VERIFICATION_RADIUS_KM = 0.05;
-    private static final long NEW_TAG_HOURS = 48;
-    private static final int BASIC_MISSION_POINTS = 10;
-    private static final int PREMIUM_MISSION_POINTS = 30; // 프리미엄 차등 포인트
-    private static final int BASIC_MAX_MISSIONS = 2;
-    private static final int PREMIUM_MAX_MISSIONS = 3; // 프리미엄 최대 3개
-    private static final long ACTIVE_MISSION_HOURS = 24;
+    private static final double VERIFICATION_RADIUS_KM = 0.05; // 50m
+    private static final long NEW_TAG_HOURS = 48; // 48시간 이내 생성된 미션
+    private static final int DEFAULT_MISSION_POINTS = 10;
+    private static final int MAX_MISSIONS_PER_REQUEST = 2;
+    private static final int PREMIUM_MISSION_POINTS = 30;
+    private static final int PREMIUM_MAX_MISSIONS = 3;
+    private static final long ACTIVE_MISSION_HOURS = 24; // 활성 미션 기준: 24시간
 
     @Transactional
     public List<RecommendDto.MissionItem> createMissionsForRecommendedPlaces(
@@ -64,14 +64,13 @@ public class MissionService {
         LocalDateTime now = LocalDateTime.now();
         List<Mission> activeMissions = missionRepository.findActiveByUser(user, now);
 
-        // 등급별 제한 및 포인트 설정
-        int maxLimit = user.isPremium() ? PREMIUM_MAX_MISSIONS : BASIC_MAX_MISSIONS;
-        int points = user.isPremium() ? PREMIUM_MISSION_POINTS : BASIC_MISSION_POINTS;
+        int maxMissions = user.isPremium() ? PREMIUM_MAX_MISSIONS : MAX_MISSIONS_PER_REQUEST;
+        int missionPoints = user.isPremium() ? PREMIUM_MISSION_POINTS : DEFAULT_MISSION_POINTS;
 
         List<Mission> newMissions = new java.util.ArrayList<>();
 
         for (Place place : recommendedPlaces) {
-            if (newMissions.size() >= maxLimit) {
+            if (newMissions.size() >= maxMissions) {
                 break;
             }
 
@@ -96,7 +95,7 @@ public class MissionService {
                     .place(place)
                     .title(missionContent.getTitle())
                     .description(missionContent.getDescription())
-                    .points(points)
+                    .points(missionPoints)
                     .emotion(emotionKeyword)
                     .isCompleted(false)
                     .createdAt(now)
@@ -116,26 +115,6 @@ public class MissionService {
                         .expiresAt(m.getExpiresAt())
                         .build())
                 .collect(Collectors.toList());
-    }
-
-    // 프리미엄 구독
-    @Transactional
-    public void purchasePremium(Users user, String planType) {
-        int cost = planType.equals("7DAYS") ? 50 : 200;
-        int days = planType.equals("7DAYS") ? 7 : 30;
-
-        if (user.getPoints() < cost) {
-            throw new CustomException(MissionErrorCode.POINT_DEDUCTION_FAILED);
-        }
-
-        user.deductPoints(cost);
-        user.setMembershipLevel(Users.MembershipLevel.PREMIUM);
-
-        // 기존 만료일이 현재보다 미래라면 그 날짜부터 연장, 아니면 현재부터 설정
-        LocalDateTime baseDate = user.isPremium() ? user.getPremiumExpiryDate() : LocalDateTime.now();
-        user.setPremiumExpiryDate(baseDate.plusDays(days));
-
-        userRepository.save(user);
     }
 
     //캘린더 아카이빙 (날짜 검증 및 저장)

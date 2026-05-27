@@ -5,6 +5,7 @@ import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
 import java.time.LocalDateTime;
 
 @Entity
@@ -44,12 +45,6 @@ public class Users {
     @Column(length = 50)
     private String country;
 
-    @Enumerated(EnumType.STRING)
-    @Builder.Default
-    private MembershipLevel membershipLevel = MembershipLevel.BASIC;
-
-    private LocalDateTime premiumExpiryDate;
-
     @CreatedDate
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -59,26 +54,30 @@ public class Users {
     private LocalDateTime updatedAt;
 
     @Column(name = "display_language", length = 20)
-    private String displayLanguage; // 표시 언어 (영어, 한국어, 중국어, 일본어, 베트남어)
+    private String displayLanguage;
 
     @Column(name = "nationality", length = 50)
-    private String nationality; // 국적
+    private String nationality;
 
     @Column(name = "interests", length = 500)
-    private String interests; // 관심사
+    private String interests;
 
     @Column(name = "onboarding_completed")
-    private Boolean onboardingCompleted = false; // 온보딩 완료 여부
+    private Boolean onboardingCompleted = false;
 
-    // 마지막 접속 시간
-    @Column(name = "last_login_time", length = 100)
+    @Column(name = "last_login_time")
     private LocalDateTime lastLoginTime;
+
+    @Column(name = "current_character_code", columnDefinition = "VARCHAR(20) NOT NULL DEFAULT 'happy'")
+    @Builder.Default
+    private String currentCharacterCode = "happy";
+
+    @Column(name = "premium_expires_at")
+    private LocalDateTime premiumExpiresAt;
 
     public enum AuthProvider {
         LOCAL, GOOGLE
     }
-
-    public enum MembershipLevel { BASIC, PREMIUM }
 
     public void updatePassword(String password) {
         this.password = password;
@@ -92,11 +91,6 @@ public class Users {
         this.country = country;
     }
 
-    public boolean isPremium() {
-        return membershipLevel == MembershipLevel.PREMIUM &&
-                premiumExpiryDate != null &&
-                premiumExpiryDate.isAfter(LocalDateTime.now());
-    }
     public void addPoints(int amount) {
         this.points += amount;
     }
@@ -105,5 +99,14 @@ public class Users {
         if (this.points >= amount) {
             this.points -= amount;
         }
+    }
+
+    public boolean isPremium() {
+        return premiumExpiresAt != null && premiumExpiresAt.isAfter(LocalDateTime.now());
+    }
+
+    public void extendPremium(int days) {
+        LocalDateTime base = isPremium() ? premiumExpiresAt : LocalDateTime.now();
+        this.premiumExpiresAt = base.plusDays(days);
     }
 }

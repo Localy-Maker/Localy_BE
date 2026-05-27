@@ -19,6 +19,9 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ChatCleanupScheduler {
 
+    private static final int BASIC_CHAT_RETENTION_DAYS = 1;
+    private static final int PREMIUM_CHAT_RETENTION_DAYS = 5;
+
     private final ChatBotRepository chatBotRepository;
     private final UserRepository userRepository;
     private final RedisTemplate<String, String> redisTemplate;
@@ -40,10 +43,12 @@ public class ChatCleanupScheduler {
                     .distinct() // 중복 제거
                     .toList();
 
-            if (dates.size() <= 6) continue; // 최근 1개만 유지 → 삭제할 게 없음
+            int keepDays = user.isPremium() ? PREMIUM_CHAT_RETENTION_DAYS : BASIC_CHAT_RETENTION_DAYS;
 
-            // 최근 1개 제외한 나머지 날짜
-            List<LocalDate> toDelete = dates.subList(6, dates.size());
+            if (dates.size() <= keepDays) continue;
+
+            // keepDays 이후 인덱스 = 오래된 날짜들 → 삭제
+            List<LocalDate> toDelete = dates.subList(keepDays, dates.size());
 
             for (LocalDate date : toDelete) {
                 chatBotRepository.deleteMessagesByUserIdAndDate(user.getId(), date);

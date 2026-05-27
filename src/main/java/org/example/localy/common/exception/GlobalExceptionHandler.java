@@ -2,12 +2,14 @@ package org.example.localy.common.exception;
 
 import lombok.extern.slf4j.Slf4j;
 import org.example.localy.common.exception.errorCode.GlobalErrorCode;
+import org.example.localy.common.exception.errorCode.ShopErrorCode;
 import org.example.localy.common.response.BaseResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.stream.Collectors;
@@ -54,6 +56,22 @@ public class GlobalExceptionHandler {
                     GlobalErrorCode.RESOURCE_NOT_FOUND.getCode(),
                     GlobalErrorCode.RESOURCE_NOT_FOUND.getMessage()
             ));
+  }
+
+  // enum 파싱 실패 (잘못된 category 값 등) → SHOP006
+  @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+  public ResponseEntity<BaseResponse<Object>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+    if (ex.getRequiredType() != null && ex.getRequiredType().isEnum()) {
+      return ResponseEntity
+          .status(ShopErrorCode.INVALID_CATEGORY.getStatus())
+          .body(BaseResponse.failure(
+              ShopErrorCode.INVALID_CATEGORY.getCode(),
+              ShopErrorCode.INVALID_CATEGORY.getMessage()
+          ));
+    }
+    return ResponseEntity
+        .badRequest()
+        .body(BaseResponse.failure("VALIDATION_ERROR", "잘못된 요청 파라미터입니다."));
   }
 
   // 예상치 못한 예외

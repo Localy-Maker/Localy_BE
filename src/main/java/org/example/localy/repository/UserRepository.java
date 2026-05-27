@@ -1,7 +1,9 @@
 package org.example.localy.repository;
 
+import jakarta.persistence.LockModeType;
 import org.example.localy.entity.Users;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -28,7 +30,9 @@ public interface UserRepository extends JpaRepository<Users, Long> {
 
     List<Users> findByLastLoginTimeBefore(LocalDateTime time);
 
-    // lastAccessAt이 NULL인 유저도 포함하고 싶으면
     List<Users> findByLastLoginTimeIsNullOrLastLoginTimeBefore(LocalDateTime time);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT u FROM Users u WHERE u.id = :id")
+    Optional<Users> findByIdWithLock(@Param("id") Long id);
 }
