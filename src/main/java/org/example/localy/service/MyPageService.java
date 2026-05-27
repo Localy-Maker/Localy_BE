@@ -50,15 +50,15 @@ public class MyPageService {
         Users user = userRepository.findById(userId)
                 .orElseThrow(() -> new CustomException(AuthErrorCode.USER_NOT_FOUND));
 
-        log.info("프로필 조회: userId={}, membership={}, email={}", userId, user.getMembershipLevel(), user.getEmail());
+        log.info("프로필 조회: userId={}, isPremium={}, email={}", userId, user.isPremium(), user.getEmail());
 
         return MyPageDto.ProfileResponse.builder()
                 .userId(user.getId())
                 .nickname(user.getNickname())
                 .email(user.getEmail())
                 .points(user.getPoints())
-                .membershipLevel(user.getMembershipLevel().toString())
-                .premiumExpiryDate(user.getPremiumExpiryDate())
+                .isPremium(user.isPremium())
+                .premiumExpiresAt(user.getPremiumExpiresAt())
                 .build();
     }
 

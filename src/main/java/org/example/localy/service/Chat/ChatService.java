@@ -17,7 +17,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
-import static org.example.localy.entity.Users.MembershipLevel.PREMIUM;
 
 @Slf4j
 @Service
@@ -62,9 +61,9 @@ public class ChatService {
 
         Pageable recent;
 
-        if(user.getMembershipLevel()==PREMIUM) {
+        if (user.isPremium()) {
             recent = PageRequest.of(0, 5);
-        }else {
+        } else {
             recent = PageRequest.of(0, 1);
         }
         List<LocalDate> dates = chatBotRepository.findLastChatDate(userId, recent);

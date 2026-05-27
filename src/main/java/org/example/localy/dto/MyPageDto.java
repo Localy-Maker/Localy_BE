@@ -32,11 +32,11 @@ public class MyPageDto {
         @Schema(description = "포인트")
         private Integer points;
 
-        @Schema(description = "멤버십 등급 (BASIC, PREMIUM)")
-        private String membershipLevel;
+        @Schema(description = "프리미엄 구독 중 여부")
+        private Boolean isPremium;
 
-        @Schema(description = "프리미엄 만료일")
-        private LocalDateTime premiumExpiryDate;
+        @Schema(description = "프리미엄 만료일 (비구독 시 null)", nullable = true)
+        private LocalDateTime premiumExpiresAt;
     }
 
     @Getter
