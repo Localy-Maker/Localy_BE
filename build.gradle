@@ -87,3 +87,14 @@ dependencies {
 tasks.named('test') {
     useJUnitPlatform()
 }
+
+task uploadAssets(type: JavaExec, dependsOn: compileJava) {
+    group = 'localy'
+    description = 'SVG/PNG 에셋을 S3에 업로드합니다. AWS 자격증명 사전 설정 필요.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'org.example.localy.util.AssetUploader'
+    // 에셋 경로 변경 시: ./gradlew uploadAssets -PassetsDir=/your/path
+    if (project.hasProperty('assetsDir')) {
+        systemProperties['assetsDir'] = project.property('assetsDir')
+    }
+}
