@@ -7,10 +7,14 @@ import lombok.RequiredArgsConstructor;
 import org.example.localy.common.response.BaseResponse;
 import org.example.localy.dto.MyPageDto;
 import org.example.localy.dto.OnboardingDto;
+import org.example.localy.dto.premium.PremiumDto;
+import org.example.localy.entity.Users;
 import org.example.localy.service.EmailVerificationService;
 import org.example.localy.service.MyPageService;
 import org.example.localy.service.OnboardingService;
+import org.example.localy.service.premium.PremiumService;
 import org.example.localy.util.JwtUtil;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @Tag(name = "MyPage", description = "마이페이지 API")
@@ -21,7 +25,19 @@ public class MyPageController {
 
     private final MyPageService myPageService;
     private final OnboardingService onboardingService;
+    private final PremiumService premiumService;
     private final JwtUtil jwtUtil;
+
+    /**
+     * 프리미엄 구독 상태 조회 (/api/premium/status와 동일한 응답)
+     */
+    @Operation(summary = "프리미엄 구독 상태 조회", description = "마이페이지에서 프리미엄 구독 여부 및 만료 정보 조회")
+    @GetMapping("/premium")
+    public BaseResponse<PremiumDto.StatusResponse> getPremiumStatus(
+            @AuthenticationPrincipal Users user
+    ) {
+        return BaseResponse.success("구독 상태 조회 성공", premiumService.getStatus(user));
+    }
 
     /**
      * 마이페이지 홈 - 프로필 조회
