@@ -19,6 +19,7 @@ import org.example.localy.service.mission.MissionService;
 import org.example.localy.util.DistanceCalculator;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.redis.core.RedisTemplate;
 import java.util.Objects;
@@ -204,6 +205,14 @@ public class PlaceService {
         Place place = placeRepository.findById(placeId)
                 .orElseThrow(() -> new CustomException(PlaceErrorCode.PLACE_NOT_FOUND));
 
+        // 전화번호/영업시간/상세 소개는 상세 API로만 채워지므로, 상세페이지 조회 시점에 보강한다.
+        if (StringUtils.hasText(place.getContentId())) {
+            Place enriched = recommendService.saveOrUpdatePlace(place.getContentId());
+            if (enriched != null) {
+                place = enriched;
+            }
+        }
+
         if (user != null) {
             try {
                 // 사용자의 현재 감정 키워드 가져오기
@@ -237,6 +246,7 @@ public class PlaceService {
                 .openingHours(place.getOpeningHours())
                 .images(imageUrls.isEmpty() ? List.of(place.getThumbnailImage()) : imageUrls)
                 .shortDescription(place.getShortDescription())
+                .longDescription(place.getLongDescription())
                 .isBookmarked(isBookmarked)
                 .bookmarkCount(place.getBookmarkCount())
                 .build();
