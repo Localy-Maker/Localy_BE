@@ -326,7 +326,15 @@ public class PlaceRecommendService {
         }
 
         TourApiDto.Data d = response.getData();
-        String cleanDesc = d.getPost_desc() != null ? d.getPost_desc().replaceAll("<[^>]*>", " ").trim() : "";
+        String cleanDesc = "";
+        if (d.getPost_desc() != null) {
+            cleanDesc = d.getPost_desc()
+                    .replaceAll("(?is)<style[^>]*>.*?</style>", " ")
+                    .replaceAll("(?is)<script[^>]*>.*?</script>", " ")
+                    .replaceAll("<[^>]*>", " ")
+                    .replaceAll("\\s+", " ")
+                    .trim();
+        }
 
         Place place = existingPlace.orElseGet(() -> Place.builder().build());
         place.setContentId(d.getCid());
