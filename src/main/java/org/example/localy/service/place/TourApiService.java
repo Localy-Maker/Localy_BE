@@ -2,6 +2,7 @@ package org.example.localy.service.place;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.localy.dto.place.TourApiDetailDto;
 import org.example.localy.dto.place.TourApiDto;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -22,17 +23,17 @@ public class TourApiService {
     @Value("${app.tour-api.service-key}")
     private String apiKey;
 
-    public TourApiDto getPlaceDetailByCid(String cid) {
+    public TourApiDetailDto getPlaceDetailByCid(String cid) {
         try {
             log.info("장소 상세 정보 조회 시작. cid: {}", cid);
 
-            TourApiDto response = webClient.post()
+            TourApiDetailDto response = webClient.post()
                     .uri("https://api-call.visitseoul.net/api/v1/contents/info")
                     .header("VISITSEOUL-API-KEY", apiKey)
                     .contentType(MediaType.APPLICATION_JSON)
                     .bodyValue(Map.of("cid", cid))
                     .retrieve()
-                    .bodyToMono(TourApiDto.class)
+                    .bodyToMono(TourApiDetailDto.class)
                     .block();
 
             if (response == null) {
@@ -46,12 +47,12 @@ public class TourApiService {
                 return null;
             }
 
-            if (response.getData() == null || response.getData().isEmpty()) {
-                log.error("장소 상세 정보의 data가 null이거나 비어있습니다. cid: {}", cid);
+            if (response.getData() == null) {
+                log.error("장소 상세 정보의 data가 null입니다. cid: {}", cid);
                 return null;
             }
 
-            log.info("장소 상세 정보 조회 성공. cid: {}, 장소명: {}", cid, response.getData().get(0).getPost_sj());
+            log.info("장소 상세 정보 조회 성공. cid: {}, 장소명: {}", cid, response.getData().getPost_sj());
             return response;
 
         } catch (Exception e) {

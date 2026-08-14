@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.example.localy.common.exception.CustomException;
 import org.example.localy.common.exception.errorCode.PlaceErrorCode;
 import org.example.localy.dto.place.RecommendDto;
+import org.example.localy.dto.place.TourApiDetailDto;
 import org.example.localy.dto.place.TourApiDto;
 import org.example.localy.entity.EmotionWindowResult;
 import org.example.localy.entity.Users;
@@ -278,12 +279,12 @@ public class PlaceRecommendService {
      */
     private Place enrichPlaceCoordinates(Place place) {
         try {
-            TourApiDto response = tourApiService.getPlaceDetailByCid(place.getContentId());
-            if (response == null || response.getData() == null || response.getData().isEmpty()) {
+            TourApiDetailDto response = tourApiService.getPlaceDetailByCid(place.getContentId());
+            if (response == null || response.getData() == null) {
                 return null;
             }
 
-            TourApiDto.Data detail = response.getData().get(0);
+            TourApiDto.Data detail = response.getData();
             if (detail.getTraffic() == null
                     || !StringUtils.hasText(detail.getTraffic().getMap_position_y())
                     || !StringUtils.hasText(detail.getTraffic().getMap_position_x())) {
@@ -318,14 +319,13 @@ public class PlaceRecommendService {
         }
 
         // 상세정보 없을 때만 VisitSeoul API 호출
-        TourApiDto response = tourApiService.getPlaceDetailByCid(cid);
-        if (response == null || response.getData() == null || response.getData().isEmpty()) {
+        TourApiDetailDto response = tourApiService.getPlaceDetailByCid(cid);
+        if (response == null || response.getData() == null) {
             log.warn("장소 상세 정보를 가져올 수 없습니다. cid: {}", cid);
             return existingPlace.orElse(null);
         }
 
-        // ⭐ data가 List이므로 첫 번째 항목 가져오기
-        TourApiDto.Data d = response.getData().get(0);
+        TourApiDto.Data d = response.getData();
         String cleanDesc = d.getPost_desc() != null ? d.getPost_desc().replaceAll("<[^>]*>", " ").trim() : "";
 
         Place place = existingPlace.orElseGet(() -> Place.builder().build());
