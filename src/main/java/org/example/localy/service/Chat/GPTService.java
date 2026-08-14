@@ -194,6 +194,15 @@ public class GPTService {
                     recommendation.getRecommendedPlaces().size(),
                     validRecommendations.size());
 
+            if (validRecommendations.isEmpty()) {
+                log.warn("GPT가 추천 장소를 하나도 반환하지 않아 후보 장소로 대체합니다.");
+                validRecommendations = availablePlaces.stream()
+                        .limit(5)
+                        .map(p -> new PlaceRecommendationResult.RecommendedPlace(
+                                p.getId(), "감정에 맞는 장소를 찾지 못해 기본으로 추천합니다.", 0.5))
+                        .collect(Collectors.toList());
+            }
+
             return new PlaceRecommendationResult(validRecommendations);
 
         } catch (Exception e) {
