@@ -21,8 +21,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 
+import static org.example.localy.common.exception.errorCode.GlobalErrorCode.INVALID_INPUT_VALUE;
 import static org.example.localy.common.exception.errorCode.JwtErrorCode.JWT_MISSING;
 
 @Slf4j
@@ -63,16 +65,37 @@ public class ChatController {
           """
     )
     @GetMapping("/chatMessages/past/{date}")
-    public BaseResponse<List<ChatMessageResponse>> pastMessages(@AuthenticationPrincipal Users user, @PathVariable LocalDate date) {
+    public BaseResponse<List<ChatMessageResponse>> pastMessages(@AuthenticationPrincipal Users user, @PathVariable String date) {
 
         Long userId = user.getId();
 
         if(userId!=null){
-            List<ChatMessageResponse> pastMessages = chatService.getPastChat(userId, date);
+            List<ChatMessageResponse> pastMessages = chatService.getPastChat(userId, parseDate(date));
             return BaseResponse.success(pastMessages);
         }
         else{
             throw new CustomException(JWT_MISSING);
+        }
+    }
+
+    // 프론트가 "2026,8,14" 형식으로 보내는 경우도 함께 지원 (ISO 형식은 그대로 파싱)
+    private LocalDate parseDate(String date) {
+        try {
+            return LocalDate.parse(date);
+        } catch (DateTimeParseException e) {
+            String[] parts = date.split(",");
+            if (parts.length == 3) {
+                try {
+                    return LocalDate.of(
+                            Integer.parseInt(parts[0].trim()),
+                            Integer.parseInt(parts[1].trim()),
+                            Integer.parseInt(parts[2].trim())
+                    );
+                } catch (NumberFormatException | java.time.DateTimeException ignored) {
+                    // fall through
+                }
+            }
+            throw new CustomException(INVALID_INPUT_VALUE);
         }
     }
 
