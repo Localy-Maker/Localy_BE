@@ -40,6 +40,12 @@ public class PlaceRecommendService {
     // 목록 API가 좌표를 안 줄 때, 상세 API로 좌표를 보강하는 최대 호출 수 (응답 지연 방지)
     private static final int MAX_COORDINATE_ENRICH_CALLS = 15;
 
+    // 추천 다양성을 위한 후보 풀 최소 크기 (이보다 적으면 이미 5개 이상이어도 API로 더 채움)
+    private static final int MIN_CANDIDATE_POOL_SIZE = 15;
+
+    // 목록 API로 새로 받아온 장소를 후보에 포함할 최대 거리 (km) — 위치 필터가 없는 API라 직접 걸러냄
+    private static final double MAX_RECOMMEND_DISTANCE_KM = 10.0;
+
     @Transactional
     public RecommendDto.RecommendResponse recommendPlaces(Users user, Double latitude, Double longitude) {
         // 1. 오늘 기준 최신 감정 분석 결과 가져오기 (없으면 기본값 사용)
@@ -61,9 +67,9 @@ public class PlaceRecommendService {
 
         log.info("현재 위치 주변 DB 내 장소 개수: {}", nearbyPlaces.size());
 
-        // 4. 주변 장소 부족 시 API 호출하여 추가
-        if (nearbyPlaces.size() < 5) {
-            log.info("데이터 부족으로 API를 새로 호출합니다. (현재: {}개)", nearbyPlaces.size());
+        // 4. 추천 다양성을 위해 후보 풀이 작으면 API 호출하여 추가 (이미 5개 이상이어도 보강)
+        if (nearbyPlaces.size() < MIN_CANDIDATE_POOL_SIZE) {
+            log.info("추천 후보가 부족하여 API를 새로 호출합니다. (현재: {}개)", nearbyPlaces.size());
             List<TourApiDto.Data> apiList = tourApiService.getContentsList();
 
             if (apiList != null && !apiList.isEmpty()) {
@@ -88,10 +94,10 @@ public class PlaceRecommendService {
                         .collect(Collectors.toList());
 
                 // 부족분만큼 상세 API로 좌표를 보강 (최대 호출 수 제한)
-                int needed = 5 - placesWithCoords.size();
+                int needed = MIN_CANDIDATE_POOL_SIZE - nearbyPlaces.size();
                 int enrichedCount = 0;
                 for (Place place : placesWithoutCoords) {
-                    if (placesWithCoords.size() >= 5) break;
+                    if (placesWithCoords.size() >= needed) break;
                     if (enrichedCount >= MAX_COORDINATE_ENRICH_CALLS) break;
 
                     enrichedCount++;
@@ -104,15 +110,20 @@ public class PlaceRecommendService {
                     log.info("좌표 없는 장소 {}개 중 {}건을 상세 API로 좌표 보강 시도했습니다.", placesWithoutCoords.size(), enrichedCount);
                 }
 
-                // 거리순 정렬 후 추가
-                placesWithCoords.sort((p1, p2) -> {
-                    double dist1 = DistanceCalculator.calculateDistance(latitude, longitude, p1.getLatitude(), p1.getLongitude());
-                    double dist2 = DistanceCalculator.calculateDistance(latitude, longitude, p2.getLatitude(), p2.getLongitude());
-                    return Double.compare(dist1, dist2);
-                });
+                // 목록 API는 위치 필터가 없어 서울 전역이 섞여 나올 수 있으므로,
+                // 실제 거리를 계산해 반경 밖 장소는 후보에서 제외한 뒤 거리순으로 추가
+                List<Place> nearbyFromApi = placesWithCoords.stream()
+                        .filter(p -> DistanceCalculator.calculateDistance(latitude, longitude, p.getLatitude(), p.getLongitude()) <= MAX_RECOMMEND_DISTANCE_KM)
+                        .sorted((p1, p2) -> {
+                            double dist1 = DistanceCalculator.calculateDistance(latitude, longitude, p1.getLatitude(), p1.getLongitude());
+                            double dist2 = DistanceCalculator.calculateDistance(latitude, longitude, p2.getLatitude(), p2.getLongitude());
+                            return Double.compare(dist1, dist2);
+                        })
+                        .collect(Collectors.toList());
 
-                nearbyPlaces.addAll(placesWithCoords);
-                log.info("좌표 있는 장소 {}개 추가. API 호출 후 총 장소 개수: {}", placesWithCoords.size(), nearbyPlaces.size());
+                nearbyPlaces.addAll(nearbyFromApi);
+                log.info("좌표 있는 장소 {}개 중 {}km 이내 {}개 추가. API 호출 후 총 장소 개수: {}",
+                        placesWithCoords.size(), MAX_RECOMMEND_DISTANCE_KM, nearbyFromApi.size(), nearbyPlaces.size());
             }
         }
 
