@@ -127,10 +127,11 @@ public class PlaceRecommendService {
             }
         }
 
-        // 5. 여전히 장소가 부족하면 좌표 없는 장소라도 추가
+        // 5. 여전히 장소가 부족하면 좌표 없는 장소라도 추가 (거리를 알 수 없는 장소만, 먼 장소는 제외)
         if (nearbyPlaces.size() < 5) {
             log.warn("좌표 있는 장소가 부족합니다. 좌표 없는 장소도 포함합니다.");
             List<Place> placesWithoutCoords = allPlaces.stream()
+                    .filter(p -> p.getLatitude() == null || p.getLongitude() == null)
                     .filter(p -> !nearbyPlaces.contains(p))
                     .limit(5 - nearbyPlaces.size())
                     .collect(Collectors.toList());
@@ -161,10 +162,10 @@ public class PlaceRecommendService {
     }
 
     /**
-     * 동적 반경으로 주변 장소 찾기 (3km → 5km → 10km → 50km 순으로 확장)
+     * 동적 반경으로 주변 장소 찾기 (3km → 5km → MAX_RECOMMEND_DISTANCE_KM 순으로 확장, 그 이상은 확장하지 않음)
      */
     private List<Place> findNearbyPlacesWithDynamicRadius(List<Place> allPlaces, Double latitude, Double longitude) {
-        double[] radii = {3.0, 5.0, 10.0, 50.0}; // km 단위
+        double[] radii = {3.0, 5.0, MAX_RECOMMEND_DISTANCE_KM}; // km 단위
 
         for (double radius : radii) {
             List<Place> nearbyPlaces = allPlaces.stream()
@@ -179,16 +180,20 @@ public class PlaceRecommendService {
             }
         }
 
-        // 50km 내에도 없으면 전체에서 가장 가까운 순으로
-        log.warn("50km 내 장소 부족. 전체에서 가장 가까운 장소 반환");
-        return allPlaces.stream()
+        // MAX_RECOMMEND_DISTANCE_KM 내에도 5개가 안 되면, 더 멀리 확장하지 않고
+        // 그 범위 안에 있는 장소만(5개 미만이라도) 가까운 순으로 반환
+        List<Place> withinMaxDistance = allPlaces.stream()
                 .filter(p -> p.getLatitude() != null && p.getLongitude() != null)
+                .filter(p -> DistanceCalculator.calculateDistance(latitude, longitude, p.getLatitude(), p.getLongitude()) <= MAX_RECOMMEND_DISTANCE_KM)
                 .sorted((p1, p2) -> {
                     double dist1 = DistanceCalculator.calculateDistance(latitude, longitude, p1.getLatitude(), p1.getLongitude());
                     double dist2 = DistanceCalculator.calculateDistance(latitude, longitude, p2.getLatitude(), p2.getLongitude());
                     return Double.compare(dist1, dist2);
                 })
                 .collect(Collectors.toList());
+
+        log.warn("{}km 내 장소가 {}개뿐입니다. 더 멀리 확장하지 않습니다.", MAX_RECOMMEND_DISTANCE_KM, withinMaxDistance.size());
+        return withinMaxDistance;
     }
 
     /**
