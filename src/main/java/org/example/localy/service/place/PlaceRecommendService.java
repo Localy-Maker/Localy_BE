@@ -34,6 +34,9 @@ public class PlaceRecommendService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final EmotionWindowResultRepository emotionWindowResultRepository;
 
+    // 목록 API가 좌표를 안 줄 때, 상세 API로 좌표를 보강하는 최대 호출 수 (응답 지연 방지)
+    private static final int MAX_COORDINATE_ENRICH_CALLS = 15;
+
     @Transactional
     public RecommendDto.RecommendResponse recommendPlaces(Users user, Double latitude, Double longitude) {
         // 1. 오늘 기준 최신 감정 분석 결과 가져오기 (없으면 기본값 사용)
@@ -73,29 +76,40 @@ public class PlaceRecommendService {
 
                 log.info("{}개의 새 장소를 저장했습니다.", newPlaces.size());
 
-                // 좌표 있는 장소만 거리순 정렬
+                // 목록 API는 좌표를 주지 않으므로, 좌표 있는/없는 장소를 분리
                 List<Place> placesWithCoords = newPlaces.stream()
                         .filter(p -> p.getLatitude() != null && p.getLongitude() != null)
-                        .sorted((p1, p2) -> {
-                            double dist1 = DistanceCalculator.calculateDistance(latitude, longitude, p1.getLatitude(), p1.getLongitude());
-                            double dist2 = DistanceCalculator.calculateDistance(latitude, longitude, p2.getLatitude(), p2.getLongitude());
-                            return Double.compare(dist1, dist2);
-                        })
                         .collect(Collectors.toList());
+                List<Place> placesWithoutCoords = newPlaces.stream()
+                        .filter(p -> p.getLatitude() == null || p.getLongitude() == null)
+                        .collect(Collectors.toList());
+
+                // 부족분만큼 상세 API로 좌표를 보강 (최대 호출 수 제한)
+                int needed = 5 - placesWithCoords.size();
+                int enrichedCount = 0;
+                for (Place place : placesWithoutCoords) {
+                    if (placesWithCoords.size() >= 5) break;
+                    if (enrichedCount >= MAX_COORDINATE_ENRICH_CALLS) break;
+
+                    enrichedCount++;
+                    Place enriched = enrichPlaceCoordinates(place);
+                    if (enriched != null) {
+                        placesWithCoords.add(enriched);
+                    }
+                }
+                if (needed > 0) {
+                    log.info("좌표 없는 장소 {}개 중 {}건을 상세 API로 좌표 보강 시도했습니다.", placesWithoutCoords.size(), enrichedCount);
+                }
+
+                // 거리순 정렬 후 추가
+                placesWithCoords.sort((p1, p2) -> {
+                    double dist1 = DistanceCalculator.calculateDistance(latitude, longitude, p1.getLatitude(), p1.getLongitude());
+                    double dist2 = DistanceCalculator.calculateDistance(latitude, longitude, p2.getLatitude(), p2.getLongitude());
+                    return Double.compare(dist1, dist2);
+                });
 
                 nearbyPlaces.addAll(placesWithCoords);
                 log.info("좌표 있는 장소 {}개 추가. API 호출 후 총 장소 개수: {}", placesWithCoords.size(), nearbyPlaces.size());
-
-                // 여전히 부족하면 좌표 없는 장소도 추가
-                if (nearbyPlaces.size() < 5) {
-                    List<Place> placesWithoutCoords = newPlaces.stream()
-                            .filter(p -> p.getLatitude() == null || p.getLongitude() == null)
-                            .limit(5 - nearbyPlaces.size())
-                            .collect(Collectors.toList());
-
-                    nearbyPlaces.addAll(placesWithoutCoords);
-                    log.warn("좌표 없는 장소 {}개를 추가했습니다. 총 장소 개수: {}", placesWithoutCoords.size(), nearbyPlaces.size());
-                }
             }
         }
 
@@ -254,6 +268,38 @@ public class PlaceRecommendService {
             return placeRepository.save(place);
         } catch (Exception e) {
             log.error("저장 실패: cid={}, error={}", data.getCid(), e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 목록 API에는 없는 좌표를 상세 API(getPlaceDetailByCid)로 조회해 채워 넣는다.
+     * 상세 API에도 좌표가 없으면 null을 반환한다.
+     */
+    private Place enrichPlaceCoordinates(Place place) {
+        try {
+            TourApiDto response = tourApiService.getPlaceDetailByCid(place.getContentId());
+            if (response == null || response.getData() == null || response.getData().isEmpty()) {
+                return null;
+            }
+
+            TourApiDto.Data detail = response.getData().get(0);
+            if (detail.getTraffic() == null
+                    || !StringUtils.hasText(detail.getTraffic().getMap_position_y())
+                    || !StringUtils.hasText(detail.getTraffic().getMap_position_x())) {
+                return null;
+            }
+
+            place.setLatitude(Double.parseDouble(detail.getTraffic().getMap_position_y()));
+            place.setLongitude(Double.parseDouble(detail.getTraffic().getMap_position_x()));
+            place.setAddress(detail.getTraffic().getNew_adres());
+
+            return placeRepository.save(place);
+        } catch (NumberFormatException e) {
+            log.warn("좌표 보강 중 파싱 오류: cid={}", place.getContentId());
+            return null;
+        } catch (Exception e) {
+            log.error("좌표 보강 실패: cid={}, error={}", place.getContentId(), e.getMessage());
             return null;
         }
     }
