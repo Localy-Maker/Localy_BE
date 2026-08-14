@@ -1,5 +1,6 @@
 package org.example.localy.service.place;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.localy.common.exception.CustomException;
@@ -34,6 +35,7 @@ public class PlaceRecommendService {
     private final GPTService gptService;
     private final RedisTemplate<String, Object> redisTemplate;
     private final EmotionWindowResultRepository emotionWindowResultRepository;
+    private final ObjectMapper objectMapper;
 
     // 목록 API가 좌표를 안 줄 때, 상세 API로 좌표를 보강하는 최대 호출 수 (응답 지연 방지)
     private static final int MAX_COORDINATE_ENRICH_CALLS = 15;
@@ -307,8 +309,16 @@ public class PlaceRecommendService {
 
     public Place saveOrUpdatePlace(String cid) {
         String redisKey = "place_detail:" + cid;
-        Place cachedPlace = (Place) redisTemplate.opsForValue().get(redisKey);
-        if (cachedPlace != null) return cachedPlace;
+        Object cached = redisTemplate.opsForValue().get(redisKey);
+        if (cached != null) {
+            // Object 타입 RedisTemplate은 타입 정보 없이 저장되어 Place가 아닌
+            // LinkedHashMap으로 역직렬화되므로 ObjectMapper로 명시적으로 변환한다.
+            try {
+                return objectMapper.convertValue(cached, Place.class);
+            } catch (IllegalArgumentException e) {
+                log.warn("Redis 캐시 변환 실패, DB에서 다시 조회합니다. cid: {}", cid);
+            }
+        }
 
         Optional<Place> existingPlace = placeRepository.findByContentId(cid);
 

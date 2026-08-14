@@ -25,7 +25,9 @@ import org.springframework.data.redis.core.RedisTemplate;
 import java.util.Objects;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -135,9 +137,14 @@ public class PlaceService {
                     .filter(m -> !m.getIsCompleted())
                     .collect(Collectors.toList());
 
-            return activeMissions.stream()
+            // 한 장소에 미션이 여러 개 있을 수 있으므로 장소 기준으로 중복 제거
+            Map<Long, Place> uniquePlaces = new LinkedHashMap<>();
+            activeMissions.stream()
                     .map(Mission::getPlace)
                     .filter(Objects::nonNull)
+                    .forEach(place -> uniquePlaces.putIfAbsent(place.getId(), place));
+
+            return uniquePlaces.values().stream()
                     .map(place -> convertToPlaceSimple(place, latitude, longitude))
                     .filter(Objects::nonNull)
                     .collect(Collectors.toList());
