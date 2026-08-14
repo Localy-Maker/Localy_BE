@@ -143,6 +143,12 @@ public class ChatWorker {
                     log.debug("Redis connection closed during shutdown - this is expected");
                     break;
                 }
+            } catch (IllegalStateException e) {
+                // LettuceConnectionFactory는 SmartLifecycle 단계에서 ChatWorker의 @PreDestroy보다
+                // 먼저 정지될 수 있어, running=false로 바뀌기 전에 이 예외가 발생할 수 있다.
+                // Redis 연결이 이미 끊긴 상태라 재시도해도 의미가 없으므로 바로 루프를 종료한다.
+                log.info("🛑 Redis 연결이 종료되어 ChatWorker consume loop를 종료합니다: {}", e.getMessage());
+                break;
             } catch (Exception e) {
                 // 기타 예외 처리
                 if (running) {
