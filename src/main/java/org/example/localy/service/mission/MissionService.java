@@ -28,8 +28,10 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.stream.Collectors;
@@ -65,7 +67,6 @@ public class MissionService {
                 user.getId(), emotionKeyword, recommendedPlaces.size());
 
         LocalDateTime now = LocalDateTime.now();
-        List<Mission> activeMissions = missionRepository.findActiveByUser(user, now);
 
         int maxMissions = user.isPremium() ? PREMIUM_MAX_MISSIONS : MAX_MISSIONS_PER_REQUEST;
         int missionPoints = user.isPremium() ? PREMIUM_MISSION_POINTS : DEFAULT_MISSION_POINTS;
@@ -75,18 +76,17 @@ public class MissionService {
                 ? emotionKeyword + " (Premium Grade: 사용자가 더 높은 성취감을 느낄 수 있도록 난이도가 높은 도전적인 미션을 1개 제안해줘. 보상은 30포인트 가치)"
                 : emotionKeyword;
 
+        // 활성 미션이 없을 때만 호출된다고 가정하므로, 여기서는 후보 목록 내에서
+        // 서로 다른 장소를 최대 maxMissions개(장소당 미션 1개) 골라내기만 하면 된다.
         List<Place> eligiblePlaces = new ArrayList<>();
+        Set<Long> usedPlaceIds = new HashSet<>();
         for (Place place : recommendedPlaces) {
             if (eligiblePlaces.size() >= maxMissions) {
                 break;
             }
-
-            boolean alreadyHasMission = activeMissions.stream()
-                    .anyMatch(m -> m.getPlace().getId().equals(place.getId())
-                            && m.getEmotion().equalsIgnoreCase(emotionKeyword)
-                            && !m.getIsCompleted());
-
-            if (alreadyHasMission) continue;
+            if (!usedPlaceIds.add(place.getId())) {
+                continue; // 이미 후보로 선택된 장소는 중복 제외
+            }
 
             eligiblePlaces.add(place);
         }
@@ -285,17 +285,19 @@ public class MissionService {
                 .filter(m -> !m.getIsCompleted() && ChronoUnit.HOURS.between(m.getCreatedAt(), now) < ACTIVE_MISSION_HOURS)
                 .collect(Collectors.toList());
 
+        // 활성 미션이 하나도 없을 때만 새로 생성한다 (감정이 바뀌어도 기존 활성 미션이 있으면 그대로 둔다)
+        if (!activeMissions.isEmpty()) {
+            return;
+        }
+
         String currentEmotion = emotionDataService.getCurrentEmotion(user).getDominantEmotion();
+        RecommendDto.RecommendResponse recommendation = recommendService.recommendPlaces(user, userLat, userLon);
+        List<Place> places = recommendation.getRecommendedPlaces().stream()
+                .map(rec -> placeRepository.findById(rec.getPlaceId()).orElse(null))
+                .filter(Objects::nonNull).toList();
 
-        if (activeMissions.isEmpty() || !activeMissions.get(0).getEmotion().equalsIgnoreCase(currentEmotion)) {
-            RecommendDto.RecommendResponse recommendation = recommendService.recommendPlaces(user, userLat, userLon);
-            List<Place> places = recommendation.getRecommendedPlaces().stream()
-                    .map(rec -> placeRepository.findById(rec.getPlaceId()).orElse(null))
-                    .filter(Objects::nonNull).toList();
-
-            if (!places.isEmpty()) {
-                createMissionsForRecommendedPlaces(user, places, currentEmotion);
-            }
+        if (!places.isEmpty()) {
+            createMissionsForRecommendedPlaces(user, places, currentEmotion);
         }
     }
 
@@ -346,58 +348,32 @@ public class MissionService {
     public void generateMissionAtDetailPage(Users user, Place place, String emotionKeyword) {
         LocalDateTime now = LocalDateTime.now();
 
-        // 해당 사용자의 현재 활성 미션(24시간 이내) 전체 조회
+        // 활성 미션이 하나라도 있으면 새로 생성하지 않고 기존 미션을 유지한다
         List<Mission> activeMissions = missionRepository.findActiveByUser(user, now);
-
-        // 현재 장소 + 현재 감정에 해당하는 활성 미션이 있는지 확인
-        boolean alreadyHasMission = activeMissions.stream()
-                .anyMatch(m -> m.getPlace().getId().equals(place.getId())
-                        && m.getEmotion().equalsIgnoreCase(emotionKeyword));
-
-        // 동일 감정의 활성 미션이 있다면 기존 미션 유지하고 생성하지 않음
-        if (alreadyHasMission) {
-            log.info("동일 감정의 활성 미션이 존재하여 기존 미션을 유지합니다: emotion={}", emotionKeyword);
+        if (!activeMissions.isEmpty()) {
+            log.info("이미 활성 미션이 있어 새로 생성하지 않습니다: userId={}", user.getId());
             return;
         }
 
-        int maxLimit = user.isPremium() ? 3 : 2;
-        int points = user.isPremium() ? 30 : 10;
+        // 지금 보고 있는 장소를 첫 후보로 하고, 그 장소 주변의 다른 장소들로 나머지를 채운다
+        // (장소당 미션 1개, 서로 다른 장소끼리 생성되도록 createMissionsForRecommendedPlaces에 위임)
+        List<Place> candidatePlaces = new ArrayList<>();
+        candidatePlaces.add(place);
 
-        log.info("새로운 미션을 {}개 생성합니다. 등급: {}", maxLimit, user.isPremium() ? "PREMIUM" : "BASIC");
-
-        // 미션별 GPT 문구 생성은 서로 독립적인 호출이라 병렬로 처리
-        List<CompletableFuture<Mission>> missionFutures = new ArrayList<>();
-        for (int i = 0; i < maxLimit; i++) {
-            missionFutures.add(CompletableFuture.supplyAsync(() -> {
-                try {
-                    GPTService.MissionCreationResult missionContent =
-                            gptService.createMissionContent(place.getTitle(), place.getCategory(), emotionKeyword);
-
-                    return Mission.builder()
-                            .user(user)
-                            .place(place)
-                            .title(missionContent.getTitle())
-                            .description(missionContent.getDescription())
-                            .emotion(emotionKeyword)
-                            .points(points)
-                            .isCompleted(false)
-                            .createdAt(now)
-                            .expiresAt(now.plusHours(24)) // 24시간 기준
-                            .updatedAt(now)
-                            .build();
-                } catch (Exception e) {
-                    // 미션 하나의 GPT 호출 실패로 나머지 미션 생성까지 다 날아가지 않도록 격리
-                    log.error("미션 문구 생성 실패: placeId={}", place.getId(), e);
-                    return null;
-                }
-            }, externalApiExecutor));
+        if (place.getLatitude() != null && place.getLongitude() != null) {
+            try {
+                RecommendDto.RecommendResponse recommendation =
+                        recommendService.recommendPlaces(user, place.getLatitude(), place.getLongitude());
+                recommendation.getRecommendedPlaces().stream()
+                        .map(rec -> placeRepository.findById(rec.getPlaceId()).orElse(null))
+                        .filter(Objects::nonNull)
+                        .filter(p -> !p.getId().equals(place.getId()))
+                        .forEach(candidatePlaces::add);
+            } catch (Exception e) {
+                log.warn("상세페이지 미션 생성 중 주변 장소 추천 실패, 현재 장소만으로 진행합니다: placeId={}", place.getId(), e);
+            }
         }
 
-        List<Mission> newMissions = missionFutures.stream()
-                .map(CompletableFuture::join)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toList());
-
-        missionRepository.saveAll(newMissions);
+        createMissionsForRecommendedPlaces(user, candidatePlaces, emotionKeyword);
     }
 }
