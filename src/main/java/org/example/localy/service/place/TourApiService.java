@@ -8,7 +8,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
+import reactor.util.retry.Retry;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -34,6 +37,10 @@ public class TourApiService {
                     .bodyValue(Map.of("cid", cid))
                     .retrieve()
                     .bodyToMono(TourApiDetailDto.class)
+                    // VisitSeoul 상세 API가 간헐적으로 500을 반환하는 경우가 많아, 일시적인 오류로 보고 짧게 재시도
+                    .retryWhen(Retry.backoff(2, Duration.ofMillis(400))
+                            .filter(e -> e instanceof WebClientResponseException
+                                    && ((WebClientResponseException) e).getStatusCode().is5xxServerError()))
                     .block();
 
             if (response == null) {
