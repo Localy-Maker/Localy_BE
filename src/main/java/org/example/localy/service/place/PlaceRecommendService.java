@@ -22,6 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -36,6 +38,7 @@ public class PlaceRecommendService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final EmotionWindowResultRepository emotionWindowResultRepository;
     private final ObjectMapper objectMapper;
+    private final ExecutorService externalApiExecutor;
 
     // 목록 API가 좌표를 안 줄 때, 상세 API로 좌표를 보강하는 최대 호출 수 (응답 지연 방지)
     private static final int MAX_COORDINATE_ENRICH_CALLS = 15;
@@ -93,21 +96,28 @@ public class PlaceRecommendService {
                         .filter(p -> p.getLatitude() == null || p.getLongitude() == null)
                         .collect(Collectors.toList());
 
-                // 부족분만큼 상세 API로 좌표를 보강 (최대 호출 수 제한)
+                // 부족분만큼 상세 API로 좌표를 보강 (최대 호출 수 제한, 서로 독립적인 호출이라 병렬 처리)
                 int needed = MIN_CANDIDATE_POOL_SIZE - nearbyPlaces.size();
-                int enrichedCount = 0;
-                for (Place place : placesWithoutCoords) {
-                    if (placesWithCoords.size() >= needed) break;
-                    if (enrichedCount >= MAX_COORDINATE_ENRICH_CALLS) break;
+                List<Place> enrichCandidates = placesWithoutCoords.stream()
+                        .limit(MAX_COORDINATE_ENRICH_CALLS)
+                        .collect(Collectors.toList());
 
-                    enrichedCount++;
-                    Place enriched = enrichPlaceCoordinates(place);
-                    if (enriched != null) {
-                        placesWithCoords.add(enriched);
-                    }
-                }
+                List<CompletableFuture<Place>> enrichFutures = enrichCandidates.stream()
+                        .map(place -> CompletableFuture.supplyAsync(() -> enrichPlaceCoordinates(place), externalApiExecutor))
+                        .collect(Collectors.toList());
+
+                // 외부 API 호출 결과(join)를 모은 뒤, DB 저장은 JPA 세션이 있는 이 스레드에서 순차 수행
+                List<Place> enrichedPlaces = enrichFutures.stream()
+                        .map(CompletableFuture::join)
+                        .filter(Objects::nonNull)
+                        .map(placeRepository::save)
+                        .collect(Collectors.toList());
+
+                placesWithCoords.addAll(enrichedPlaces);
+
                 if (needed > 0) {
-                    log.info("좌표 없는 장소 {}개 중 {}건을 상세 API로 좌표 보강 시도했습니다.", placesWithoutCoords.size(), enrichedCount);
+                    log.info("좌표 없는 장소 {}개 중 {}건을 상세 API로 좌표 보강 시도하여 {}건 성공했습니다.",
+                            placesWithoutCoords.size(), enrichCandidates.size(), enrichedPlaces.size());
                 }
 
                 // 목록 API는 위치 필터가 없어 서울 전역이 섞여 나올 수 있으므로,
@@ -292,8 +302,10 @@ public class PlaceRecommendService {
     }
 
     /**
-     * 목록 API에는 없는 좌표를 상세 API(getPlaceDetailByCid)로 조회해 채워 넣는다.
+     * 목록 API에는 없는 좌표를 상세 API(getPlaceDetailByCid)로 조회해 Place 필드에 채워 넣는다.
      * 상세 API에도 좌표가 없으면 null을 반환한다.
+     * DB 저장은 하지 않는다 — 외부 API 호출(느린 부분)만 병렬 워커 스레드에서 수행하고,
+     * 저장은 JPA 세션이 바인딩된 원래 트랜잭션 스레드에서 별도로 수행해야 하기 때문.
      */
     private Place enrichPlaceCoordinates(Place place) {
         try {
@@ -313,7 +325,7 @@ public class PlaceRecommendService {
             place.setLongitude(Double.parseDouble(detail.getTraffic().getMap_position_x()));
             place.setAddress(detail.getTraffic().getNew_adres());
 
-            return placeRepository.save(place);
+            return place;
         } catch (NumberFormatException e) {
             log.warn("좌표 보강 중 파싱 오류: cid={}", place.getContentId());
             return null;

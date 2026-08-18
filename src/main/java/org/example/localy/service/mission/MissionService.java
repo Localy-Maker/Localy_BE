@@ -30,6 +30,8 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 import java.util.stream.Collectors;
 
 @Service
@@ -45,6 +47,7 @@ public class MissionService {
     private final EmotionDataService emotionDataService;
     private final PlaceRepository placeRepository;
     private final MissionArchiveRepository missionArchiveRepository; // 신규 추가
+    private final ExecutorService externalApiExecutor;
 
     private static final double VERIFICATION_RADIUS_KM = 0.05; // 50m
     private static final long NEW_TAG_HOURS = 48; // 48시간 이내 생성된 미션
@@ -67,10 +70,14 @@ public class MissionService {
         int maxMissions = user.isPremium() ? PREMIUM_MAX_MISSIONS : MAX_MISSIONS_PER_REQUEST;
         int missionPoints = user.isPremium() ? PREMIUM_MISSION_POINTS : DEFAULT_MISSION_POINTS;
 
-        List<Mission> newMissions = new java.util.ArrayList<>();
+        // 프리미엄용 프롬프트 (장소와 무관하게 동일하므로 루프 밖에서 한 번만 계산)
+        final String promptKeyword = user.isPremium()
+                ? emotionKeyword + " (Premium Grade: 사용자가 더 높은 성취감을 느낄 수 있도록 난이도가 높은 도전적인 미션을 1개 제안해줘. 보상은 30포인트 가치)"
+                : emotionKeyword;
 
+        List<Place> eligiblePlaces = new ArrayList<>();
         for (Place place : recommendedPlaces) {
-            if (newMissions.size() >= maxMissions) {
+            if (eligiblePlaces.size() >= maxMissions) {
                 break;
             }
 
@@ -81,29 +88,32 @@ public class MissionService {
 
             if (alreadyHasMission) continue;
 
-            // 프리미엄용
-            String promptKeyword = emotionKeyword;
-            if (user.isPremium()) {
-                promptKeyword += " (Premium Grade: 사용자가 더 높은 성취감을 느낄 수 있도록 난이도가 높은 도전적인 미션을 1개 제안해줘. 보상은 30포인트 가치)";
-            }
-
-            GPTService.MissionCreationResult missionContent =
-                    gptService.createMissionContent(place.getTitle(), place.getCategory(), promptKeyword);
-
-            Mission newMission = Mission.builder()
-                    .user(user)
-                    .place(place)
-                    .title(missionContent.getTitle())
-                    .description(missionContent.getDescription())
-                    .points(missionPoints)
-                    .emotion(emotionKeyword)
-                    .isCompleted(false)
-                    .createdAt(now)
-                    .expiresAt(now.plusHours(ACTIVE_MISSION_HOURS))
-                    .build();
-
-            newMissions.add(newMission);
+            eligiblePlaces.add(place);
         }
+
+        // 장소별 GPT 미션 문구 생성은 서로 독립적인 호출이라 병렬로 처리
+        List<CompletableFuture<Mission>> missionFutures = eligiblePlaces.stream()
+                .map(place -> CompletableFuture.supplyAsync(() -> {
+                    GPTService.MissionCreationResult missionContent =
+                            gptService.createMissionContent(place.getTitle(), place.getCategory(), promptKeyword);
+
+                    return Mission.builder()
+                            .user(user)
+                            .place(place)
+                            .title(missionContent.getTitle())
+                            .description(missionContent.getDescription())
+                            .points(missionPoints)
+                            .emotion(emotionKeyword)
+                            .isCompleted(false)
+                            .createdAt(now)
+                            .expiresAt(now.plusHours(ACTIVE_MISSION_HOURS))
+                            .build();
+                }, externalApiExecutor))
+                .collect(Collectors.toList());
+
+        List<Mission> newMissions = missionFutures.stream()
+                .map(CompletableFuture::join)
+                .collect(Collectors.toList());
 
         missionRepository.saveAll(newMissions);
         return newMissions.stream()
@@ -348,24 +358,31 @@ public class MissionService {
 
         log.info("새로운 미션을 {}개 생성합니다. 등급: {}", maxLimit, user.isPremium() ? "PREMIUM" : "BASIC");
 
-        List<Mission> newMissions = new ArrayList<>();
+        // 미션별 GPT 문구 생성은 서로 독립적인 호출이라 병렬로 처리
+        List<CompletableFuture<Mission>> missionFutures = new ArrayList<>();
         for (int i = 0; i < maxLimit; i++) {
-            GPTService.MissionCreationResult missionContent =
-                    gptService.createMissionContent(place.getTitle(), place.getCategory(), emotionKeyword);
+            missionFutures.add(CompletableFuture.supplyAsync(() -> {
+                GPTService.MissionCreationResult missionContent =
+                        gptService.createMissionContent(place.getTitle(), place.getCategory(), emotionKeyword);
 
-            newMissions.add(Mission.builder()
-                    .user(user)
-                    .place(place)
-                    .title(missionContent.getTitle())
-                    .description(missionContent.getDescription())
-                    .emotion(emotionKeyword)
-                    .points(points)
-                    .isCompleted(false)
-                    .createdAt(now)
-                    .expiresAt(now.plusHours(24)) // 24시간 기준
-                    .updatedAt(now)
-                    .build());
+                return Mission.builder()
+                        .user(user)
+                        .place(place)
+                        .title(missionContent.getTitle())
+                        .description(missionContent.getDescription())
+                        .emotion(emotionKeyword)
+                        .points(points)
+                        .isCompleted(false)
+                        .createdAt(now)
+                        .expiresAt(now.plusHours(24)) // 24시간 기준
+                        .updatedAt(now)
+                        .build();
+            }, externalApiExecutor));
         }
+
+        List<Mission> newMissions = missionFutures.stream()
+                .map(CompletableFuture::join)
+                .collect(Collectors.toList());
 
         missionRepository.saveAll(newMissions);
     }
