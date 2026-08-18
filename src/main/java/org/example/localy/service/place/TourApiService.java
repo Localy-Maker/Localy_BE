@@ -61,14 +61,22 @@ public class TourApiService {
         }
     }
 
-    // 목록 조회
+    // 목록 조회 (1페이지, 기본 50개) — 기존 호출부 호환용
     public List<TourApiDto.Data> getContentsList() {
+        TourApiDto response = getContentsPage(1, 50);
+        return response.getData() != null ? response.getData() : new ArrayList<>();
+    }
+
+    // 목록 조회 (페이지 지정) — 카탈로그 전체 동기화처럼 여러 페이지를 순회할 때 사용.
+    // paging(total_count 등)까지 그대로 반환한다.
+    public TourApiDto getContentsPage(int pageNo, int pageRow) {
         try {
-            log.info("VisitSeoul API 호출 시작. API Key: {}", apiKey != null ? "설정됨" : "미설정");
+            log.info("VisitSeoul API 호출 시작. page_no={}, pageRow={}, API Key: {}",
+                    pageNo, pageRow, apiKey != null ? "설정됨" : "미설정");
 
             Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("page_no", 1);
-            requestBody.put("pageRow", 50);
+            requestBody.put("page_no", pageNo);
+            requestBody.put("pageRow", pageRow);
 
             TourApiDto response = webClient.post()
                     .uri("https://api-call.visitseoul.net/api/v1/contents/list")
@@ -81,29 +89,32 @@ public class TourApiService {
 
             if (response == null) {
                 log.error("VisitSeoul API 응답이 null입니다.");
-                return new ArrayList<>();
+                return emptyResponse();
             }
 
             if (response.getResultCode() != null && response.getResultCode() != 200) {
                 log.error("VisitSeoul API 오류. result_code: {}, message: {}",
                         response.getResultCode(), response.getResultMessage());
-                return new ArrayList<>();
+                return emptyResponse();
             }
 
-            if (response.getData() == null || response.getData().isEmpty()) {
-                log.error("VisitSeoul API 응답의 data가 null이거나 비어있습니다.");
-                return new ArrayList<>();
+            if (response.getData() == null) {
+                response.setData(new ArrayList<>());
             }
 
             log.info("VisitSeoul API로부터 {}개의 장소를 가져왔습니다. (전체: {}개)",
                     response.getData().size(),
                     response.getPaging() != null ? response.getPaging().getTotalCount() : "unknown");
 
-            return response.getData();
+            return response;
 
         } catch (Exception e) {
             log.error("VisitSeoul API 호출 중 오류 발생: {}", e.getMessage(), e);
-            return new ArrayList<>();
+            return emptyResponse();
         }
+    }
+
+    private TourApiDto emptyResponse() {
+        return TourApiDto.builder().data(new ArrayList<>()).build();
     }
 }

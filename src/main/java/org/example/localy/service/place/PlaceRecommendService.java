@@ -49,6 +49,13 @@ public class PlaceRecommendService {
     // 목록 API로 새로 받아온 장소를 후보에 포함할 최대 거리 (km) — 위치 필터가 없는 API라 직접 걸러냄
     private static final double MAX_RECOMMEND_DISTANCE_KM = 10.0;
 
+    // 카탈로그 전체 동기화 시 한 번에 순회할 최대 페이지 수 (외부 API 과호출 방지 안전장치)
+    private static final int MAX_CATALOG_SYNC_PAGES = 20;
+    private static final int CATALOG_SYNC_PAGE_SIZE = 50;
+
+    // 카탈로그 전체 동기화 시 한 번에 좌표를 보강할 최대 개수 (요청 경로가 아니라 배치라 넉넉하게, 그래도 상한은 둠)
+    private static final int MAX_CATALOG_SYNC_ENRICH_CALLS = 100;
+
     @Transactional
     public RecommendDto.RecommendResponse recommendPlaces(Users user, Double latitude, Double longitude) {
         // 1. 오늘 기준 최신 감정 분석 결과 가져오기 (없으면 기본값 사용)
@@ -404,5 +411,63 @@ public class PlaceRecommendService {
         Place savedPlace = placeRepository.save(place);
         redisTemplate.opsForValue().set(redisKey, savedPlace, 1, TimeUnit.DAYS);
         return savedPlace;
+    }
+
+    /**
+     * VisitSeoul 콘텐츠 목록 API는 위치 기반 검색을 지원하지 않고 서울 전역 콘텐츠 카탈로그를 페이지 단위로 줄 뿐이라,
+     * 사용자 요청 시점에 매번 1페이지만 불러오면 추천 후보가 항상 같은 좁은 풀로 고정된다.
+     * 이 메서드는 스케줄러에서 주기적으로 호출되어 카탈로그 전체 페이지를 순회하며 신규 장소를 저장하고,
+     * 좌표가 없는 장소들의 좌표를 상세 API로 보강해 DB의 지리적 커버리지를 넓힌다.
+     * 요청 경로가 아니라 배치 작업이므로 하나의 트랜잭션으로 묶지 않고, 각 저장 호출이 개별 트랜잭션으로 커밋되게 둔다.
+     */
+    public void syncFullCatalog() {
+        int pageNo = 1;
+        int totalCount = Integer.MAX_VALUE;
+        int savedCount = 0;
+
+        while ((pageNo - 1) * CATALOG_SYNC_PAGE_SIZE < totalCount && pageNo <= MAX_CATALOG_SYNC_PAGES) {
+            TourApiDto response = tourApiService.getContentsPage(pageNo, CATALOG_SYNC_PAGE_SIZE);
+            List<TourApiDto.Data> pageData = response.getData();
+
+            if (pageData == null || pageData.isEmpty()) {
+                break;
+            }
+
+            if (response.getPaging() != null && response.getPaging().getTotalCount() != null) {
+                totalCount = response.getPaging().getTotalCount();
+            }
+
+            for (TourApiDto.Data data : pageData) {
+                if (saveNewPlaceFromApi(data) != null) {
+                    savedCount++;
+                }
+            }
+
+            pageNo++;
+        }
+
+        log.info("장소 카탈로그 동기화: {}페이지 순회, {}건 저장/확인 완료", pageNo - 1, savedCount);
+
+        List<Place> placesWithoutCoords = placeRepository.findByLatitudeIsNullOrLongitudeIsNull().stream()
+                .limit(MAX_CATALOG_SYNC_ENRICH_CALLS)
+                .collect(Collectors.toList());
+
+        if (placesWithoutCoords.isEmpty()) {
+            log.info("장소 카탈로그 동기화: 좌표 보강이 필요한 장소가 없습니다.");
+            return;
+        }
+
+        List<CompletableFuture<Place>> enrichFutures = placesWithoutCoords.stream()
+                .map(place -> CompletableFuture.supplyAsync(() -> enrichPlaceCoordinates(place), externalApiExecutor))
+                .collect(Collectors.toList());
+
+        List<Place> enrichedPlaces = enrichFutures.stream()
+                .map(CompletableFuture::join)
+                .filter(Objects::nonNull)
+                .map(placeRepository::save)
+                .collect(Collectors.toList());
+
+        log.info("장소 카탈로그 동기화: 좌표 없는 장소 {}건 중 {}건 좌표 보강 성공",
+                placesWithoutCoords.size(), enrichedPlaces.size());
     }
 }

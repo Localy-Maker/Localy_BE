@@ -15,4 +15,6 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
     List<Place> findByContentIdIn(List<String> contentIds);
 
     boolean existsByContentId(String contentId);
+
+    List<Place> findByLatitudeIsNullOrLongitudeIsNull();
 }

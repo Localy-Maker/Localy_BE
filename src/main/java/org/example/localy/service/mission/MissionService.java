@@ -94,25 +94,32 @@ public class MissionService {
         // 장소별 GPT 미션 문구 생성은 서로 독립적인 호출이라 병렬로 처리
         List<CompletableFuture<Mission>> missionFutures = eligiblePlaces.stream()
                 .map(place -> CompletableFuture.supplyAsync(() -> {
-                    GPTService.MissionCreationResult missionContent =
-                            gptService.createMissionContent(place.getTitle(), place.getCategory(), promptKeyword);
+                    try {
+                        GPTService.MissionCreationResult missionContent =
+                                gptService.createMissionContent(place.getTitle(), place.getCategory(), promptKeyword);
 
-                    return Mission.builder()
-                            .user(user)
-                            .place(place)
-                            .title(missionContent.getTitle())
-                            .description(missionContent.getDescription())
-                            .points(missionPoints)
-                            .emotion(emotionKeyword)
-                            .isCompleted(false)
-                            .createdAt(now)
-                            .expiresAt(now.plusHours(ACTIVE_MISSION_HOURS))
-                            .build();
+                        return Mission.builder()
+                                .user(user)
+                                .place(place)
+                                .title(missionContent.getTitle())
+                                .description(missionContent.getDescription())
+                                .points(missionPoints)
+                                .emotion(emotionKeyword)
+                                .isCompleted(false)
+                                .createdAt(now)
+                                .expiresAt(now.plusHours(ACTIVE_MISSION_HOURS))
+                                .build();
+                    } catch (Exception e) {
+                        // 장소 하나의 GPT 호출 실패로 나머지 장소의 미션 생성까지 다 날아가지 않도록 격리
+                        log.error("미션 문구 생성 실패: placeId={}", place.getId(), e);
+                        return null;
+                    }
                 }, externalApiExecutor))
                 .collect(Collectors.toList());
 
         List<Mission> newMissions = missionFutures.stream()
                 .map(CompletableFuture::join)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
 
         missionRepository.saveAll(newMissions);
@@ -362,26 +369,33 @@ public class MissionService {
         List<CompletableFuture<Mission>> missionFutures = new ArrayList<>();
         for (int i = 0; i < maxLimit; i++) {
             missionFutures.add(CompletableFuture.supplyAsync(() -> {
-                GPTService.MissionCreationResult missionContent =
-                        gptService.createMissionContent(place.getTitle(), place.getCategory(), emotionKeyword);
+                try {
+                    GPTService.MissionCreationResult missionContent =
+                            gptService.createMissionContent(place.getTitle(), place.getCategory(), emotionKeyword);
 
-                return Mission.builder()
-                        .user(user)
-                        .place(place)
-                        .title(missionContent.getTitle())
-                        .description(missionContent.getDescription())
-                        .emotion(emotionKeyword)
-                        .points(points)
-                        .isCompleted(false)
-                        .createdAt(now)
-                        .expiresAt(now.plusHours(24)) // 24시간 기준
-                        .updatedAt(now)
-                        .build();
+                    return Mission.builder()
+                            .user(user)
+                            .place(place)
+                            .title(missionContent.getTitle())
+                            .description(missionContent.getDescription())
+                            .emotion(emotionKeyword)
+                            .points(points)
+                            .isCompleted(false)
+                            .createdAt(now)
+                            .expiresAt(now.plusHours(24)) // 24시간 기준
+                            .updatedAt(now)
+                            .build();
+                } catch (Exception e) {
+                    // 미션 하나의 GPT 호출 실패로 나머지 미션 생성까지 다 날아가지 않도록 격리
+                    log.error("미션 문구 생성 실패: placeId={}", place.getId(), e);
+                    return null;
+                }
             }, externalApiExecutor));
         }
 
         List<Mission> newMissions = missionFutures.stream()
                 .map(CompletableFuture::join)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
 
         missionRepository.saveAll(newMissions);
