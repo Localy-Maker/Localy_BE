@@ -47,16 +47,21 @@ public class Mission {
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
-    @org.springframework.data.annotation.LastModifiedDate // 완료 시점 추적
     @Column(nullable = false)
     private LocalDateTime updatedAt;
 
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
+        updatedAt = createdAt;
         if (expiresAt == null) {
             expiresAt = LocalDateTime.now().plusHours(24);
         }
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
     }
 
     public boolean isExpired() {
