@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.localy.common.exception.CustomException;
 import org.example.localy.common.exception.errorCode.PlaceErrorCode;
+import org.example.localy.dto.place.PlaceCandidateDto;
 import org.example.localy.dto.place.RecommendDto;
 import org.example.localy.dto.place.TourApiDetailDto;
 import org.example.localy.dto.place.TourApiDto;
@@ -469,5 +470,60 @@ public class PlaceRecommendService {
 
         log.info("장소 카탈로그 동기화: 좌표 없는 장소 {}건 중 {}건 좌표 보강 성공",
                 placesWithoutCoords.size(), enrichedPlaces.size());
+    }
+
+    /**
+     * 키워드로 VisitSeoul 실제 콘텐츠를 검색하고, 각 후보의 실제 좌표를 상세 API로 조회해
+     * 기준 좌표로부터 가까운 순으로 정렬해 반환한다. DB에 저장하지 않는 읽기 전용 조회다.
+     * (예: 동네 이름으로 검색해서 그 근처에 실제로 있는 콘텐츠를 찾을 때 사용)
+     */
+    public List<PlaceCandidateDto> searchNearbyContent(String keyword, double latitude, double longitude, int limit) {
+        TourApiDto response = tourApiService.searchContentsByKeyword(keyword, 30);
+        List<TourApiDto.Data> candidates = response.getData();
+
+        if (candidates == null || candidates.isEmpty()) {
+            return List.of();
+        }
+
+        List<CompletableFuture<PlaceCandidateDto>> futures = candidates.stream()
+                .map(data -> CompletableFuture.supplyAsync(() -> {
+                    TourApiDetailDto detailResponse = tourApiService.getPlaceDetailByCid(data.getCid());
+                    if (detailResponse == null || detailResponse.getData() == null) {
+                        return null;
+                    }
+
+                    TourApiDto.Data detail = detailResponse.getData();
+                    if (detail.getTraffic() == null
+                            || !StringUtils.hasText(detail.getTraffic().getMap_position_y())
+                            || !StringUtils.hasText(detail.getTraffic().getMap_position_x())) {
+                        return null;
+                    }
+
+                    try {
+                        double lat = Double.parseDouble(detail.getTraffic().getMap_position_y());
+                        double lon = Double.parseDouble(detail.getTraffic().getMap_position_x());
+                        double distance = DistanceCalculator.calculateDistance(latitude, longitude, lat, lon);
+
+                        return PlaceCandidateDto.builder()
+                                .cid(data.getCid())
+                                .title(detail.getPost_sj())
+                                .category(detail.getCate_depth())
+                                .address(detail.getTraffic().getNew_adres())
+                                .latitude(lat)
+                                .longitude(lon)
+                                .distanceKm(DistanceCalculator.roundDistance(distance))
+                                .build();
+                    } catch (NumberFormatException e) {
+                        return null;
+                    }
+                }, externalApiExecutor))
+                .collect(Collectors.toList());
+
+        return futures.stream()
+                .map(CompletableFuture::join)
+                .filter(Objects::nonNull)
+                .sorted(Comparator.comparingDouble(PlaceCandidateDto::getDistanceKm))
+                .limit(limit)
+                .collect(Collectors.toList());
     }
 }

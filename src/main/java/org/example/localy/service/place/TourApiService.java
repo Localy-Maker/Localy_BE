@@ -77,13 +77,25 @@ public class TourApiService {
     // 목록 조회 (페이지 지정) — 카탈로그 전체 동기화처럼 여러 페이지를 순회할 때 사용.
     // paging(total_count 등)까지 그대로 반환한다.
     public TourApiDto getContentsPage(int pageNo, int pageRow) {
+        return getContentsPage(pageNo, pageRow, null);
+    }
+
+    // 키워드로 콘텐츠 검색 (예: 동네 이름) — 특정 지역 근처 실제 콘텐츠를 찾을 때 사용
+    public TourApiDto searchContentsByKeyword(String keyword, int pageRow) {
+        return getContentsPage(1, pageRow, keyword);
+    }
+
+    private TourApiDto getContentsPage(int pageNo, int pageRow, String keyword) {
         try {
-            log.info("VisitSeoul API 호출 시작. page_no={}, pageRow={}, API Key: {}",
-                    pageNo, pageRow, apiKey != null ? "설정됨" : "미설정");
+            log.info("VisitSeoul API 호출 시작. page_no={}, pageRow={}, keyword={}, API Key: {}",
+                    pageNo, pageRow, keyword, apiKey != null ? "설정됨" : "미설정");
 
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("page_no", pageNo);
             requestBody.put("pageRow", pageRow);
+            if (keyword != null && !keyword.isBlank()) {
+                requestBody.put("keyword", keyword);
+            }
 
             TourApiDto response = webClient.post()
                     .uri("https://api-call.visitseoul.net/api/v1/contents/list")
