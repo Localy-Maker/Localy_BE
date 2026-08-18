@@ -9,12 +9,10 @@ import org.example.localy.dto.place.PlaceCandidateDto;
 import org.example.localy.dto.place.RecommendDto;
 import org.example.localy.dto.place.TourApiDetailDto;
 import org.example.localy.dto.place.TourApiDto;
-import org.example.localy.entity.EmotionWindowResult;
 import org.example.localy.entity.Users;
 import org.example.localy.entity.place.Place;
 import org.example.localy.repository.place.PlaceImageRepository;
 import org.example.localy.repository.place.PlaceRepository;
-import org.example.localy.repository.EmotionWindowResultRepository;
 import org.example.localy.service.Chat.GPTService;
 import org.example.localy.util.DistanceCalculator;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -37,7 +35,7 @@ public class PlaceRecommendService {
     private final PlaceImageRepository placeImageRepository;
     private final GPTService gptService;
     private final RedisTemplate<String, Object> redisTemplate;
-    private final EmotionWindowResultRepository emotionWindowResultRepository;
+    private final EmotionDataService emotionDataService;
     private final ObjectMapper objectMapper;
     private final ExecutorService externalApiExecutor;
 
@@ -59,16 +57,8 @@ public class PlaceRecommendService {
 
     @Transactional
     public RecommendDto.RecommendResponse recommendPlaces(Users user, Double latitude, Double longitude) {
-        // 1. 오늘 기준 최신 감정 분석 결과 가져오기 (없으면 기본값 사용)
-        EmotionWindowResult latestEmotion = emotionWindowResultRepository
-                .findFirstByUserIdAndCreatedAtBetweenOrderByCreatedAtDesc(
-                        user.getId(),
-                        java.time.LocalDate.now().atStartOfDay(),
-                        java.time.LocalDateTime.now()
-                ).orElseGet(() -> {
-                    log.warn("사용자 {}의 감정 데이터가 없습니다. 기본 감정 데이터를 사용합니다.", user.getId());
-                    return createDefaultEmotion(user);
-                });
+        // 1. 실시간 감정 데이터 가져오기 (채팅 등으로 방금 바뀐 감정이 바로 반영되도록 Redis 기반 실시간 값 사용)
+        RecommendDto.EmotionData latestEmotion = emotionDataService.getCurrentEmotion(user);
 
         // 2. DB에서 모든 장소 가져오기
         List<Place> allPlaces = placeRepository.findAll();
@@ -171,7 +161,7 @@ public class PlaceRecommendService {
         // 8. GPT 추천 로직 가동
         GPTService.PlaceRecommendationResult aiResult = gptService.getRecommendedPlacesByEmotion(
                 nearbyPlaces,
-                latestEmotion.getEmotion(),
+                latestEmotion.getDominantEmotion(),
                 user.getInterests()
         );
 
@@ -215,32 +205,18 @@ public class PlaceRecommendService {
     }
 
     /**
-     * 기본 감정 데이터 생성 (감정 데이터가 없을 때 사용)
-     */
-    private EmotionWindowResult createDefaultEmotion(Users user) {
-        EmotionWindowResult defaultEmotion = new EmotionWindowResult();
-        defaultEmotion.setUserId(user.getId());
-        defaultEmotion.setEmotion("중립");
-        defaultEmotion.setAvgScore(50.0); // int -> Double로 수정
-        defaultEmotion.setWindow("default");
-        defaultEmotion.setSection(3); // 중립 구간
-        defaultEmotion.setCreatedAt(java.time.LocalDateTime.now());
-        return defaultEmotion;
-    }
-
-    /**
      * 빈 추천 응답 생성 (추천 장소가 없을 때)
      */
-    private RecommendDto.RecommendResponse createEmptyRecommendResponse(EmotionWindowResult emotion) {
+    private RecommendDto.RecommendResponse createEmptyRecommendResponse(RecommendDto.EmotionData emotion) {
         return RecommendDto.RecommendResponse.builder()
-                .emotion(emotion.getEmotion())
-                .score(emotion.getAvgScore())
+                .emotion(emotion.getDominantEmotion())
+                .score((double) emotion.getEmotionScore())
                 .recommendations(new ArrayList<>())
                 .missions(new ArrayList<>())
                 .build();
     }
 
-    private RecommendDto.RecommendResponse convertToRecommendResponse(GPTService.PlaceRecommendationResult aiResult, EmotionWindowResult latestEmotion) {
+    private RecommendDto.RecommendResponse convertToRecommendResponse(GPTService.PlaceRecommendationResult aiResult, RecommendDto.EmotionData latestEmotion) {
         // RecommendDto.PlaceRecommendation 빌더에 맞춰 필드 매핑
         List<RecommendDto.PlaceRecommendation> recommendations = aiResult.getRecommendedPlaces().stream()
                 .map(rec -> {
@@ -260,8 +236,8 @@ public class PlaceRecommendService {
 
         // RecommendDto.RecommendResponse 빌더 구조에 맞춰 생성
         return RecommendDto.RecommendResponse.builder()
-                .emotion(latestEmotion.getEmotion())
-                .score(latestEmotion.getAvgScore())
+                .emotion(latestEmotion.getDominantEmotion())
+                .score((double) latestEmotion.getEmotionScore())
                 .recommendations(recommendations)
                 .missions(new ArrayList<>())
                 .build();
